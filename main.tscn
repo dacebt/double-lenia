@@ -5,8 +5,10 @@
 
 [node name="Main" type="Node2D" node_paths=PackedStringArray("environment_field")]
 script = ExtResource("1_0")
-particle_count = 3000
+particle_count = 666
+mu_range = 0.08
 environment_field = NodePath("EnvironmentTest")
-time_scale = 5.0
+repulsion_strength = 100.0
+time_scale = 75.0
 
 [node name="EnvironmentTest" parent="." instance=ExtResource("2_0xm2m")]
