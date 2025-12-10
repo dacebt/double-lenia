@@ -16,6 +16,8 @@ const LOCAL_GROUP_SIZE = 64
 @export var gradient_strength: float = 100.0
 @export var repulsion_strength: float = 50.0
 @export var time_scale: float = 1.0
+@export var max_speed: float = 0.0
+@export var velocity_smoothing: float = 0.0
 
 var rd: RenderingDevice
 var shader: RID
@@ -221,18 +223,41 @@ func _read_velocities():
 	var output_bytes = rd.buffer_get_data(velocity_buffer)
 	var output_floats = output_bytes.to_float32_array()
 	
-	# Unpack velocities
+	# Unpack velocities and apply smoothing if enabled
 	for i in range(particles.size()):
 		if i * 2 + 1 < output_floats.size():
-			particles[i].velocity = Vector2(
+			var new_velocity = Vector2(
 				output_floats[i * 2],
 				output_floats[i * 2 + 1]
 			)
+			
+			if velocity_smoothing <= 0.0:
+				particles[i].velocity = new_velocity
+			else:
+				var s = clamp(velocity_smoothing, 0.0, 1.0)
+				particles[i].velocity = particles[i].velocity.lerp(new_velocity, s)
 
 func _update_particles(delta: float):
 	# Update positions based on velocities
+	var viewport_size = get_viewport_rect().size
+	
 	for particle in particles:
+		if max_speed > 0.0:
+			var speed = particle.velocity.length()
+			if speed > max_speed:
+				particle.velocity = particle.velocity * (max_speed / speed)
+		
 		particle.position += particle.velocity * delta * time_scale
+		
+		if particle.position.x < 0.0:
+			particle.position.x += viewport_size.x
+		elif particle.position.x >= viewport_size.x:
+			particle.position.x -= viewport_size.x
+		
+		if particle.position.y < 0.0:
+			particle.position.y += viewport_size.y
+		elif particle.position.y >= viewport_size.y:
+			particle.position.y -= viewport_size.y
 
 func _draw():
 	for particle in particles:

@@ -15,6 +15,8 @@ const PARTICLE_RADIUS = 2.0
 @export var gradient_strength: float = 100.0
 @export var repulsion_strength: float = 50.0
 @export var time_scale: float = 1.0
+@export var max_speed: float = 0.0
+@export var velocity_smoothing: float = 0.0
 
 var particles: Array[Particle] = []
 
@@ -49,17 +51,35 @@ func calculate_growth(u: float) -> float:
 	return 2.0 * exp(-(diff_squared / (2.0 * sigma_squared))) - 1.0
 
 func calculate_gradient(pos: Vector2) -> Vector2:
-	var delta: float = 1.0
+	var U: float = 0.0
+	var gradU: Vector2 = Vector2.ZERO
+	var kernel_radius_squared = kernel_radius * kernel_radius
 	
-	var u_plus_x = calculate_field(pos + Vector2(delta, 0.0))
-	var u_minus_x = calculate_field(pos - Vector2(delta, 0.0))
-	var gx = calculate_growth(u_plus_x) - calculate_growth(u_minus_x)
+	# Compute U and gradU in one loop
+	for particle in particles:
+		var diff = pos - particle.position
+		var dist_sq = diff.length_squared()
+		var k = exp(-dist_sq / (2.0 * kernel_radius_squared))
+		
+		U += k
+		gradU += (-1.0 / kernel_radius_squared) * diff * k
 	
-	var u_plus_y = calculate_field(pos + Vector2(0.0, delta))
-	var u_minus_y = calculate_field(pos - Vector2(0.0, delta))
-	var gy = calculate_growth(u_plus_y) - calculate_growth(u_minus_y)
+	# Normalize by particle count
+	U /= float(particle_count)
+	gradU /= float(particle_count)
 	
-	return Vector2(gx, gy) / (2.0 * delta)
+	# Compute growth function G(U)
+	var G = calculate_growth(U)
+	var G_plus_one = G + 1.0
+	var sigma_squared = sigma * sigma
+	
+	# Compute derivative dG/dU
+	var dG_dU = (mu - U) / sigma_squared * G_plus_one
+	
+	# Final gradient: gradG = (dG/dU) * gradU
+	var gradG = gradU * dG_dU
+	
+	return gradG
 
 func calculate_repulsion(particle_index: int) -> Vector2:
 	var repulsion = Vector2.ZERO
@@ -89,12 +109,42 @@ func _process(delta):
 		if Engine.get_process_frames() % 60 == 0:
 			print("Field U sample: ", sample_u)
 	
+	var viewport_size = get_viewport_rect().size
+	
 	for i in range(particles.size()):
 		var particle = particles[i]
 		var gradient = calculate_gradient(particle.position)
 		var repulsion = calculate_repulsion(i)
-		particle.velocity = (gradient * gradient_strength) + (repulsion * repulsion_strength)
+		
+		# Compute target velocity
+		var target = gradient * gradient_strength
+		if repulsion_strength > 0.0:
+			target += repulsion * repulsion_strength
+		
+		# Apply velocity smoothing if enabled
+		if velocity_smoothing <= 0.0:
+			particle.velocity = target
+		else:
+			var s = clamp(velocity_smoothing, 0.0, 1.0)
+			particle.velocity = particle.velocity.lerp(target, s)
+		
+		# Clamp to max speed if enabled
+		if max_speed > 0.0:
+			var speed = particle.velocity.length()
+			if speed > max_speed:
+				particle.velocity = particle.velocity * (max_speed / speed)
+		
 		particle.position += particle.velocity * delta * time_scale
+		
+		if particle.position.x < 0.0:
+			particle.position.x += viewport_size.x
+		elif particle.position.x >= viewport_size.x:
+			particle.position.x -= viewport_size.x
+		
+		if particle.position.y < 0.0:
+			particle.position.y += viewport_size.y
+		elif particle.position.y >= viewport_size.y:
+			particle.position.y -= viewport_size.y
 	
 	queue_redraw()
 

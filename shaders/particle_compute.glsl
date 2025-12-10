@@ -49,21 +49,38 @@ float calculate_growth(float u) {
 	return 2.0 * exp(-(diff_sq / (2.0 * sigma_sq))) - 1.0;
 }
 
-// Calculate numerical gradient of G(U) at position pos
+// Calculate analytic gradient of G(U) at position pos
 vec2 calculate_gradient(vec2 pos) {
-	float delta = 1.0;
+	float U = 0.0;
+	vec2 gradU = vec2(0.0);
+	float kernel_radius_sq = kernel_radius * kernel_radius;
 	
-	// X component
-	float u_plus_x = calculate_field(pos + vec2(delta, 0.0));
-	float u_minus_x = calculate_field(pos - vec2(delta, 0.0));
-	float gx = calculate_growth(u_plus_x) - calculate_growth(u_minus_x);
+	// Compute U and gradU in one loop
+	for (int j = 0; j < int(particle_count); j++) {
+		vec2 diff = pos - positions[j];
+		float dist_sq = dot(diff, diff);
+		float k = exp(-dist_sq / (2.0 * kernel_radius_sq));
+		
+		U += k;
+		gradU += (-1.0 / kernel_radius_sq) * diff * k;
+	}
 	
-	// Y component
-	float u_plus_y = calculate_field(pos + vec2(0.0, delta));
-	float u_minus_y = calculate_field(pos - vec2(0.0, delta));
-	float gy = calculate_growth(u_plus_y) - calculate_growth(u_minus_y);
+	// Normalize by particle count
+	U /= particle_count;
+	gradU /= particle_count;
 	
-	return vec2(gx, gy) / (2.0 * delta);
+	// Compute growth function G(U)
+	float G = calculate_growth(U);
+	float G_plus_one = G + 1.0;
+	float sigma_sq = sigma * sigma;
+	
+	// Compute derivative dG/dU
+	float dG_dU = (mu - U) / sigma_sq * G_plus_one;
+	
+	// Final gradient: gradG = (dG/dU) * gradU
+	vec2 gradG = gradU * dG_dU;
+	
+	return gradG;
 }
 
 // Calculate repulsion force for particle at index i
@@ -104,6 +121,11 @@ void main() {
 	vec2 repulsion = calculate_repulsion(int(index));
 	
 	// Output velocity
-	velocities[index] = (gradient * gradient_strength) + (repulsion * repulsion_strength);
+	vec2 v = gradient * gradient_strength;
+	if (repulsion_strength > 0.0) {
+		v += repulsion * repulsion_strength;
+	}
+	
+	velocities[index] = v;
 }
 
