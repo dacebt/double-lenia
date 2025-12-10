@@ -14,13 +14,3 @@ A compact table listing presets, settings, and previews.
 | **Preset 03** | `600`         | `7.0`    | `25.0` | `0.04` | `0.02` | `20000.0`  | `-1.0`    | `5.0`      | ![p01](./preset04.gif) |
 
 ---
-
-### Notes
-
-* You can add as many presets as you want by adding rows.
-* GIFs will auto-scale to small inline thumbnails in tables on GitHub.
-* If you want fixed width, I can give you a version with `<img width="120">`.
-
----
-
-If you want, I can also generate a variant with **grouped columns** (Particles / Field / Forces visually grouped), but this is the cleanest compact form.
