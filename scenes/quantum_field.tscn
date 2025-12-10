@@ -4,7 +4,5 @@
 
 [node name="QuantumField" type="Node2D"]
 script = ExtResource("1_0")
-diffusion = 20.0
-mu = 0.05
-sigma = 0.01
-time_scale = 0.001
+initial_pattern = "blob"
+time_scale = 3.0

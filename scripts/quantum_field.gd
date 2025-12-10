@@ -7,6 +7,10 @@ extends Node2D
 @export_group("Grid")
 @export var grid_size: int = 512
 
+@export_group("Initial Conditions")
+@export_enum("blob", "multi_seeds") var initial_pattern: String = "multi_seeds"
+@export var seed_count: int = 8
+
 @export_group("Evolution")
 @export var diffusion: float = 0.1
 @export var mu: float = 0.3
@@ -152,24 +156,76 @@ func _create_buffers():
 	print("QUANTUM: Uniform sets created: ", uniform_sets[0].is_valid(), ", ", uniform_sets[1].is_valid())
 
 func _initialize_wave_function():
-	# Initialize buffer 0 with Gaussian blob
 	var initial_data := PackedByteArray()
 	initial_data.resize(grid_size * grid_size * 8)  # 2 floats (real, imag) * 4 bytes each
 	
-	var center = float(grid_size) / 2.0
-	var radius_sq = 50.0 * 50.0
-	
-	for y in range(grid_size):
-		for x in range(grid_size):
-			var dx = float(x) - center
-			var dy = float(y) - center
-			var dist_sq = dx * dx + dy * dy
-			var amplitude = exp(-dist_sq / (2.0 * radius_sq))
+	if initial_pattern == "blob":
+		# Original single centered Gaussian blob
+		var center = float(grid_size) / 2.0
+		var radius_sq = 50.0 * 50.0
+		
+		for y in range(grid_size):
+			for x in range(grid_size):
+				var dx = float(x) - center
+				var dy = float(y) - center
+				var dist_sq = dx * dx + dy * dy
+				var amplitude = exp(-dist_sq / (2.0 * radius_sq))
+				
+				# Pack as two float32s: real = amplitude, imag = 0.0
+				var offset = (y * grid_size + x) * 8
+				initial_data.encode_float(offset, amplitude)  # real part
+				initial_data.encode_float(offset + 4, 0.0)     # imaginary part
+		
+	elif initial_pattern == "multi_seeds":
+		# Multiple random Gaussian wave packets with random phases
+		# Initialize all cells to zero
+		for y in range(grid_size):
+			for x in range(grid_size):
+				var offset = (y * grid_size + x) * 8
+				initial_data.encode_float(offset, 0.0)      # real part
+				initial_data.encode_float(offset + 4, 0.0)  # imaginary part
+		
+		# Seed parameters
+		var seed_radius = 25.0
+		var seed_radius_sq = seed_radius * seed_radius
+		var A = sqrt(mu)  # Natural amplitude for each seed (density ~ mu at center)
+		
+		# Add each seed
+		for seed_idx in range(seed_count):
+			# Random position within grid
+			var x0 = randi() % grid_size
+			var y0 = randi() % grid_size
 			
-			# Pack as two float32s: real = amplitude, imag = 0.0
-			var offset = (y * grid_size + x) * 8
-			initial_data.encode_float(offset, amplitude)  # real part
-			initial_data.encode_float(offset + 4, 0.0)     # imaginary part
+			# Random phase in [0, 2π)
+			var phase = randf() * TAU
+			var cos_theta = cos(phase)
+			var sin_theta = sin(phase)
+			
+			# Add Gaussian wave packet contribution to all cells
+			# (We could optimize with a bounding box, but for clarity we'll do full grid)
+			for y in range(grid_size):
+				for x in range(grid_size):
+					var dx = float(x) - float(x0)
+					var dy = float(y) - float(y0)
+					var dist_sq = dx * dx + dy * dy
+					
+					# Gaussian amplitude
+					var a = A * exp(-dist_sq / (2.0 * seed_radius_sq))
+					
+					# Contributions to real and imaginary parts
+					var delta_real = a * cos_theta
+					var delta_imag = a * sin_theta
+					
+					# Read current values, add contributions, write back
+					var offset = (y * grid_size + x) * 8
+					var current_real = initial_data.decode_float(offset)
+					var current_imag = initial_data.decode_float(offset + 4)
+					
+					var new_real = current_real + delta_real
+					var new_imag = current_imag + delta_imag
+					
+					initial_data.encode_float(offset, new_real)
+					initial_data.encode_float(offset + 4, new_imag)
 	
 	# Upload to buffer 0
 	rd.buffer_update(psi_buffers[0], 0, initial_data.size(), initial_data)
