@@ -1,10 +1,12 @@
-[gd_scene load_steps=2 format=3 uid="uid://c4mvqvq3p4kj3"]
+[gd_scene load_steps=3 format=3 uid="uid://c4mvqvq3p4kj3"]
 
 [ext_resource type="Script" uid="uid://d8qppnhbuy1o" path="res://scripts/particle_system_gpu.gd" id="1_0"]
+[ext_resource type="PackedScene" uid="uid://b10xb1xfgl0sa" path="res://scenes/environment_test.tscn" id="2_0xm2m"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" node_paths=PackedStringArray("environment_field")]
 script = ExtResource("1_0")
 particle_count = 3000
-gradient_strength = 2000.0
-repulsion_strength = -1.0
+environment_field = NodePath("EnvironmentTest")
 time_scale = 5.0
+
+[node name="EnvironmentTest" parent="." instance=ExtResource("2_0xm2m")]
