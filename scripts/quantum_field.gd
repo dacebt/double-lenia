@@ -192,6 +192,7 @@ func _setup_display():
 	display_material.set_shader_parameter("brightness", 5.0)
 	display_material.set_shader_parameter("contrast", 1.0)
 	display_material.set_shader_parameter("color_mode", 1)  # Heat map by default
+	display_material.set_shader_parameter("max_amplitude", 10.0)  # Must match quantum_evolution.glsl
 	
 	# Create ImageTexture for display
 	display_texture = ImageTexture.new()
@@ -250,6 +251,8 @@ func _update_display():
 	var image = Image.create(grid_size, grid_size, false, Image.FORMAT_RGBA8)
 	
 	# Convert buffer bytes to RGBA8
+	# Encode real/imag into R/G channels, matching compute shader's max_amplitude = 10.0
+	var max_amplitude = 10.0  # Must match quantum_evolution.glsl max_amplitude
 	var float_data = byte_data.to_float32_array()
 	for y in range(grid_size):
 		for x in range(grid_size):
@@ -257,10 +260,17 @@ func _update_display():
 			if idx + 1 < float_data.size():
 				var real = float_data[idx]
 				var imag = float_data[idx + 1]
-				var density = real * real + imag * imag
-				# Clamp density and convert to color
-				var intensity = clamp(density * 10.0, 0.0, 1.0)  # Scale for visibility
-				image.set_pixel(x, y, Color(intensity, intensity, intensity, 1.0))
+				
+				# Encode from [-max_amplitude, +max_amplitude] to [0, 1]
+				var encoded_real = (real / max_amplitude) * 0.5 + 0.5
+				var encoded_imag = (imag / max_amplitude) * 0.5 + 0.5
+				
+				# Clamp to valid color range
+				encoded_real = clamp(encoded_real, 0.0, 1.0)
+				encoded_imag = clamp(encoded_imag, 0.0, 1.0)
+				
+				# Write: R = encoded_real, G = encoded_imag, B = 0.0, A = 1.0
+				image.set_pixel(x, y, Color(encoded_real, encoded_imag, 0.0, 1.0))
 	
 	# Update display texture
 	display_texture.set_image(image)

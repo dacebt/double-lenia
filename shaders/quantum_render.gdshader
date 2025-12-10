@@ -8,15 +8,20 @@ uniform sampler2D wave_texture : filter_nearest;
 uniform float brightness : hint_range(0.1, 50.0) = 5.0;
 uniform float contrast : hint_range(0.1, 5.0) = 1.0;
 uniform int color_mode : hint_range(0, 2) = 0;
+uniform float max_amplitude = 10.0;  // Must match quantum_evolution.glsl max_amplitude
 // 0 = phase as hue, density as brightness
 // 1 = density only (heat map)
 // 2 = real/imag as red/blue
 
 void fragment() {
-	vec2 psi = texture(wave_texture, UV).rg;
-	float real_part = psi.r;
-	float imag_part = psi.g;
+	// Sample encoded values (R = encoded real, G = encoded imag)
+	vec2 enc = texture(wave_texture, UV).rg;
 	
+	// Decode from [0, 1] back to [-max_amplitude, +max_amplitude]
+	float real_part = (enc.r - 0.5) * 2.0 * max_amplitude;
+	float imag_part = (enc.g - 0.5) * 2.0 * max_amplitude;
+	
+	// Compute density and phase from decoded wave function
 	float density = real_part * real_part + imag_part * imag_part;
 	float phase = atan(imag_part, real_part);
 	
