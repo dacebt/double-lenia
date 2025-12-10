@@ -16,6 +16,8 @@ Turns out this leads to **Particle Lenia**, a variant where discrete particles m
 
 ## What emerged
 
+[Particle-Lenia Presets](./patterns/README.md)
+
 Without programming any specific behaviors:
 - Particles self-organize into ring structures
 - Multiple distinct "organisms" form and maintain separation
