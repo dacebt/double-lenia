@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://wgkyc42763rr"]
+
+[ext_resource type="Script" uid="uid://bmrb6vjorrhpm" path="res://scripts/quantum_field.gd" id="1_0"]
+
+[node name="QuantumField" type="Node2D"]
+script = ExtResource("1_0")

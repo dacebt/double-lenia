@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dei1sirdr3sh1"
+path="res://.godot/imported/quantum_evolution.glsl-42790d7166e52ee63bbc4f4a9f5b4ee0.res"
+
+[deps]
+
+source_file="res://shaders/quantum_evolution.glsl"
+dest_files=["res://.godot/imported/quantum_evolution.glsl-42790d7166e52ee63bbc4f4a9f5b4ee0.res"]
+
+[params]
+
