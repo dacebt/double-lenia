@@ -265,12 +265,12 @@ func _update_display():
 	# Update display texture
 	display_texture.set_image(image)
 	
-	# Update sprite scale to fill viewport
+	# Update sprite scale to fill viewport while maintaining aspect ratio
 	var viewport_size = get_viewport_rect().size
 	if viewport_size.x > 0 and viewport_size.y > 0:
-		var scale_x = viewport_size.x / float(grid_size)
-		var scale_y = viewport_size.y / float(grid_size)
-		sprite.scale = Vector2(scale_x, scale_y)
+		# Use the smaller dimension to maintain square aspect
+		var scale_factor = min(viewport_size.x, viewport_size.y) / float(grid_size)
+		sprite.scale = Vector2(scale_factor, scale_factor)
 		sprite.position = viewport_size / 2.0
 	
 	# Update shader material to use the texture
