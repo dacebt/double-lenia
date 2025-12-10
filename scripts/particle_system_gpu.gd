@@ -9,8 +9,11 @@ const LOCAL_GROUP_SIZE = 64
 
 @export_group("Field")
 @export var kernel_radius: float = 50.0
-@export var mu: float = 0.04
+@export var mu: float = 0.04  # Legacy, kept for compatibility
+@export var mu_base: float = 0.04
+@export var mu_range: float = 0.02
 @export var sigma: float = 0.02
+@export var environment_field: Node2D = null
 
 @export_group("Forces")
 @export var gradient_strength: float = 100.0
@@ -24,12 +27,14 @@ var shader: RID
 var pipeline: RID
 var position_buffer: RID
 var velocity_buffer: RID
+var mu_buffer: RID
 var uniform_buffer: RID
 var uniform_set: RID
 
 var particles: Array[Particle] = []
 var positions_data: PackedFloat32Array
 var velocities_data: PackedFloat32Array
+var mu_data: PackedFloat32Array
 
 func _ready():
 	rd = RenderingServer.create_local_rendering_device()
@@ -86,6 +91,7 @@ func _create_buffers():
 	# Calculate buffer sizes
 	var vec2_size = 2 * 4  # 2 floats * 4 bytes each
 	var buffer_size = particle_count * vec2_size
+	var float_size = 4  # 1 float * 4 bytes
 	
 	# Create position buffer
 	positions_data.resize(particle_count * 2)
@@ -95,12 +101,21 @@ func _create_buffers():
 	velocities_data.resize(particle_count * 2)
 	velocity_buffer = rd.storage_buffer_create(buffer_size)
 	
+	# Create mu buffer (one float per particle)
+	mu_data.resize(particle_count)
+	var mu_buffer_size = particle_count * float_size
+	mu_buffer = rd.storage_buffer_create(mu_buffer_size)
+	
 	# Create uniform buffer
 	var uniform_data = PackedByteArray()
 	uniform_data.resize(32)  # 8 floats * 4 bytes
 	uniform_buffer = rd.uniform_buffer_create(32)
 	
-	# Create uniform set
+	# Create uniform set with updated bindings:
+	# binding 0: positions
+	# binding 1: velocities
+	# binding 2: mu_locals
+	# binding 3: params (uniform buffer)
 	var pos_uniform := RDUniform.new()
 	pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
 	pos_uniform.binding = 0
@@ -111,30 +126,41 @@ func _create_buffers():
 	vel_uniform.binding = 1
 	vel_uniform.add_id(velocity_buffer)
 	
+	var mu_uniform := RDUniform.new()
+	mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	mu_uniform.binding = 2
+	mu_uniform.add_id(mu_buffer)
+	
 	var params_uniform := RDUniform.new()
 	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-	params_uniform.binding = 2
+	params_uniform.binding = 3
 	params_uniform.add_id(uniform_buffer)
 	
-	uniform_set = rd.uniform_set_create([pos_uniform, vel_uniform, params_uniform], shader, 0)
+	uniform_set = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform], shader, 0)
 
 func _update_buffers():
 	# Resize buffers if particle count changed
 	var vec2_size = 2 * 4
 	var buffer_size = particle_count * vec2_size
+	var float_size = 4
+	var mu_buffer_size = particle_count * float_size
 	
 	if position_buffer.is_valid():
 		rd.free_rid(position_buffer)
 	if velocity_buffer.is_valid():
 		rd.free_rid(velocity_buffer)
+	if mu_buffer.is_valid():
+		rd.free_rid(mu_buffer)
 	
 	positions_data.resize(particle_count * 2)
 	velocities_data.resize(particle_count * 2)
+	mu_data.resize(particle_count)
 	
 	position_buffer = rd.storage_buffer_create(buffer_size)
 	velocity_buffer = rd.storage_buffer_create(buffer_size)
+	mu_buffer = rd.storage_buffer_create(mu_buffer_size)
 	
-	# Recreate uniform set
+	# Recreate uniform set with updated bindings
 	if uniform_set.is_valid():
 		rd.free_rid(uniform_set)
 	
@@ -148,12 +174,17 @@ func _update_buffers():
 	vel_uniform.binding = 1
 	vel_uniform.add_id(velocity_buffer)
 	
+	var mu_uniform := RDUniform.new()
+	mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	mu_uniform.binding = 2
+	mu_uniform.add_id(mu_buffer)
+	
 	var params_uniform := RDUniform.new()
 	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-	params_uniform.binding = 2
+	params_uniform.binding = 3
 	params_uniform.add_id(uniform_buffer)
 	
-	uniform_set = rd.uniform_set_create([pos_uniform, vel_uniform, params_uniform], shader, 0)
+	uniform_set = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform], shader, 0)
 
 func spawn_particles():
 	particles.clear()
@@ -176,6 +207,26 @@ func _upload_positions():
 	# Upload to GPU
 	var position_bytes = positions_data.to_byte_array()
 	rd.buffer_update(position_buffer, 0, position_bytes.size(), position_bytes)
+
+func _upload_mu_locals():
+	# Sample environment and compute mu_local for each particle
+	var viewport_size = get_viewport_rect().size
+	
+	for i in range(particles.size()):
+		var pos = particles[i].position
+		var m_norm := 0.0
+		
+		if environment_field and environment_field.has_method("sample"):
+			m_norm = environment_field.sample(pos)
+			# Ensure m_norm is in [-1, 1] range
+			m_norm = clamp(m_norm, -1.0, 1.0)
+		
+		var mu_local = mu_base + mu_range * m_norm
+		mu_data[i] = mu_local
+	
+	# Upload to GPU
+	var mu_bytes = mu_data.to_byte_array()
+	rd.buffer_update(mu_buffer, 0, mu_bytes.size(), mu_bytes)
 
 func _upload_uniforms(delta: float):
 	# Pack uniforms into byte array
@@ -276,6 +327,7 @@ func _process(delta):
 		_update_buffers()
 	
 	_upload_positions()
+	_upload_mu_locals()
 	_dispatch_compute(delta)
 	_read_velocities()
 	_update_particles(delta)
@@ -287,6 +339,8 @@ func _exit_tree():
 		rd.free_rid(uniform_set)
 	if uniform_buffer.is_valid():
 		rd.free_rid(uniform_buffer)
+	if mu_buffer.is_valid():
+		rd.free_rid(mu_buffer)
 	if velocity_buffer.is_valid():
 		rd.free_rid(velocity_buffer)
 	if position_buffer.is_valid():

@@ -15,11 +15,16 @@ layout(set = 0, binding = 1) writeonly buffer Velocities {
 	vec2 velocities[];
 };
 
+// Input: per-particle mu_local values
+layout(set = 0, binding = 2) readonly buffer MuLocals {
+	float mu_local[];
+};
+
 // Uniforms
-layout(set = 0, binding = 2) uniform Uniforms {
+layout(set = 0, binding = 3) uniform Uniforms {
 	float particle_count;  // cast to int when using
 	float kernel_radius;
-	float mu;
+	float mu;              // kept for compatibility, unused now
 	float sigma;
 	float gradient_strength;
 	float repulsion_strength;
@@ -41,16 +46,16 @@ float calculate_field(vec2 pos) {
 	return U / particle_count;
 }
 
-// Calculate growth function G(u)
-float calculate_growth(float u) {
-	float diff = u - mu;
+// Calculate growth function G(u) with local mu
+float calculate_growth_mu(float u, float mu_local_val) {
+	float diff = u - mu_local_val;
 	float diff_sq = diff * diff;
 	float sigma_sq = sigma * sigma;
 	return 2.0 * exp(-(diff_sq / (2.0 * sigma_sq))) - 1.0;
 }
 
-// Calculate analytic gradient of G(U) at position pos
-vec2 calculate_gradient(vec2 pos) {
+// Calculate analytic gradient of G(U) at position pos with per-particle mu_local
+vec2 calculate_gradient(vec2 pos, int index) {
 	float U = 0.0;
 	vec2 gradU = vec2(0.0);
 	float kernel_radius_sq = kernel_radius * kernel_radius;
@@ -69,13 +74,16 @@ vec2 calculate_gradient(vec2 pos) {
 	U /= particle_count;
 	gradU /= particle_count;
 	
-	// Compute growth function G(U)
-	float G = calculate_growth(U);
+	// Fetch local μ for this particle
+	float mu_loc = mu_local[index];
+	
+	// Compute growth function G(U) with local mu
+	float G = calculate_growth_mu(U, mu_loc);
 	float G_plus_one = G + 1.0;
 	float sigma_sq = sigma * sigma;
 	
 	// Compute derivative dG/dU
-	float dG_dU = (mu - U) / sigma_sq * G_plus_one;
+	float dG_dU = (mu_loc - U) / sigma_sq * G_plus_one;
 	
 	// Final gradient: gradG = (dG/dU) * gradU
 	vec2 gradG = gradU * dG_dU;
@@ -114,8 +122,8 @@ void main() {
 	
 	vec2 pos = positions[index];
 	
-	// Calculate gradient
-	vec2 gradient = calculate_gradient(pos);
+	// Calculate gradient with per-particle mu_local
+	vec2 gradient = calculate_gradient(pos, int(index));
 	
 	// Calculate repulsion
 	vec2 repulsion = calculate_repulsion(int(index));

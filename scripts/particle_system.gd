@@ -8,8 +8,11 @@ const PARTICLE_RADIUS = 2.0
 
 @export_group("Field")
 @export var kernel_radius: float = 50.0
-@export var mu: float = 0.04
+@export var mu: float = 0.04  # Legacy, kept for compatibility
+@export var mu_base: float = 0.04
+@export var mu_range: float = 0.02
 @export var sigma: float = 0.02
+@export var environment_field: Node2D = null
 
 @export_group("Forces")
 @export var gradient_strength: float = 100.0
@@ -50,7 +53,17 @@ func calculate_growth(u: float) -> float:
 	var sigma_squared = sigma * sigma
 	return 2.0 * exp(-(diff_squared / (2.0 * sigma_squared))) - 1.0
 
+func calculate_growth_with_mu(u: float, mu_local: float) -> float:
+	var diff = u - mu_local
+	var diff_squared = diff * diff
+	var sigma_squared = sigma * sigma
+	return 2.0 * exp(-(diff_squared / (2.0 * sigma_squared))) - 1.0
+
 func calculate_gradient(pos: Vector2) -> Vector2:
+	# Legacy version using global mu
+	return calculate_gradient_with_mu(pos, mu)
+
+func calculate_gradient_with_mu(pos: Vector2, mu_local: float) -> Vector2:
 	var U: float = 0.0
 	var gradU: Vector2 = Vector2.ZERO
 	var kernel_radius_squared = kernel_radius * kernel_radius
@@ -68,13 +81,13 @@ func calculate_gradient(pos: Vector2) -> Vector2:
 	U /= float(particle_count)
 	gradU /= float(particle_count)
 	
-	# Compute growth function G(U)
-	var G = calculate_growth(U)
+	# Compute growth function G(U) with local mu
+	var G = calculate_growth_with_mu(U, mu_local)
 	var G_plus_one = G + 1.0
 	var sigma_squared = sigma * sigma
 	
 	# Compute derivative dG/dU
-	var dG_dU = (mu - U) / sigma_squared * G_plus_one
+	var dG_dU = (mu_local - U) / sigma_squared * G_plus_one
 	
 	# Final gradient: gradG = (dG/dU) * gradU
 	var gradG = gradU * dG_dU
@@ -113,7 +126,19 @@ func _process(delta):
 	
 	for i in range(particles.size()):
 		var particle = particles[i]
-		var gradient = calculate_gradient(particle.position)
+		
+		# Sample environment to get M_norm in [-1, 1]
+		var m_norm := 0.0
+		if environment_field and environment_field.has_method("sample"):
+			m_norm = environment_field.sample(particle.position)
+			# Ensure m_norm is in [-1, 1] range (should already be, but clamp for safety)
+			m_norm = clamp(m_norm, -1.0, 1.0)
+		
+		# Compute local μ
+		var mu_local = mu_base + mu_range * m_norm
+		
+		# Calculate gradient with local μ
+		var gradient = calculate_gradient_with_mu(particle.position, mu_local)
 		var repulsion = calculate_repulsion(i)
 		
 		# Compute target velocity

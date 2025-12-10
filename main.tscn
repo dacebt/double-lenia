@@ -4,8 +4,7 @@
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_0")
-particle_count = 1000
-kernel_radius = 45.0
-mu = 0.022
+particle_count = 3000
+gradient_strength = 2000.0
+repulsion_strength = -1.0
 time_scale = 5.0
-max_speed = 20.0
