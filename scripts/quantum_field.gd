@@ -188,6 +188,11 @@ func _setup_display():
 	display_material = ShaderMaterial.new()
 	display_material.shader = shader_resource
 	
+	# Set default shader parameters
+	display_material.set_shader_parameter("brightness", 5.0)
+	display_material.set_shader_parameter("contrast", 1.0)
+	display_material.set_shader_parameter("color_mode", 1)  # Heat map by default
+	
 	# Create ImageTexture for display
 	display_texture = ImageTexture.new()
 	
