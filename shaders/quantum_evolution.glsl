@@ -58,17 +58,43 @@ void main() {
 	// Probability density
 	float density = real_part * real_part + imag_part * imag_part;
 	
-	// Growth function
-	float diff = density - mu;
-	float G = 2.0 * exp(-(diff * diff) / (2.0 * sigma * sigma)) - 1.0;
+	// Growth function (Lenia-style)
+	float diff_g = density - mu;
+	float G = 2.0 * exp(-(diff_g * diff_g) / (2.0 * sigma * sigma)) - 1.0;
 	
-	// Evolution
-	float d_real = -diffusion * laplacian_imag + G * real_part;
-	float d_imag =  diffusion * laplacian_real + G * imag_part;
+	// Calculate density gradient (for flow toward density)
+	float density_left  = psi_left.x * psi_left.x + psi_left.y * psi_left.y;
+	float density_right = psi_right.x * psi_right.x + psi_right.y * psi_right.y;
+	float density_up    = psi_up.x * psi_up.x + psi_up.y * psi_up.y;
+	float density_down  = psi_down.x * psi_down.x + psi_down.y * psi_down.y;
 	
-	// Euler integration
-	float new_real = real_part + dt * d_real;
-	float new_imag = imag_part + dt * d_imag;
+	// Laplacian of density (positive = local minimum, negative = local maximum)
+	float density_laplacian = density_left + density_right + density_up + density_down - 4.0 * density;
+	
+	// Evolution with three terms:
+	// 1. Wave spreading (quantum diffusion)
+	// 2. Growth/decay based on density sweet spot
+	// 3. Localization (resist spreading from high density regions)
+	float growth_strength = 0.5;
+	float localization = 0.2;
+	
+	float d_real = -diffusion * laplacian_imag 
+	             + G * growth_strength * real_part
+	             + localization * density_laplacian * real_part;
+	             
+	float d_imag = diffusion * laplacian_real 
+	             + G * growth_strength * imag_part
+	             + localization * density_laplacian * imag_part;
+	
+	// Euler integration with gentle damping
+	float damping = 0.9999;
+	float new_real = (real_part + dt * d_real) * damping;
+	float new_imag = (imag_part + dt * d_imag) * damping;
+	
+	// Clamp to prevent numerical explosion
+	float max_amplitude = 10.0;
+	new_real = clamp(new_real, -max_amplitude, max_amplitude);
+	new_imag = clamp(new_imag, -max_amplitude, max_amplitude);
 	
 	psi_out[idx(pos.x, pos.y)] = vec2(new_real, new_imag);
 }

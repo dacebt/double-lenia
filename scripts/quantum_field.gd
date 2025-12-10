@@ -8,7 +8,7 @@ extends Node2D
 @export var grid_size: int = 512
 
 @export_group("Evolution")
-@export var diffusion: float = 1.0
+@export var diffusion: float = 0.1
 @export var mu: float = 0.3
 @export var sigma: float = 0.1
 @export var time_scale: float = 1.0
