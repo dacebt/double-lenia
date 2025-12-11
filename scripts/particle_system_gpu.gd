@@ -13,7 +13,7 @@ const LOCAL_GROUP_SIZE = 64
 @export var mu_base: float = 0.04
 @export var mu_range: float = 0.02
 @export var sigma: float = 0.02
-@export var environment_field: Node = null
+@export var environment_field: EnvironmentField = null
 
 @export_group("Forces")
 @export var gradient_strength: float = 100.0
@@ -209,39 +209,15 @@ func _upload_positions():
 	rd.buffer_update(position_buffer, 0, position_bytes.size(), position_bytes)
 
 func _upload_mu_locals():
-	# Sample environment and compute mu_local for each particle
-	var min_m: float = 999.0
-	var max_m: float = -999.0
-	var min_mu: float = 999.0
-	var max_mu: float = -999.0
-	
-	if Engine.get_process_frames() % 60 == 0:
-		print("EnvRef: ", environment_field)
-	
 	for i in range(particles.size()):
 		var pos: Vector2 = particles[i].position
-		
+
 		var m_norm: float = 0.0
-		if environment_field and environment_field.has_method("sample"):
-			m_norm = environment_field.call("sample", pos)
-		
+		if environment_field:
+			m_norm = environment_field.sample(pos)
+
 		var mu_val: float = mu_base + mu_range * m_norm
 		mu_data[i] = mu_val
-		
-		if m_norm < min_m:
-			min_m = m_norm
-		if m_norm > max_m:
-			max_m = m_norm
-		if mu_val < min_mu:
-			min_mu = mu_val
-		if mu_val > max_mu:
-			max_mu = mu_val
-		
-		if i == 0 and Engine.get_process_frames() % 60 == 0:
-			print("Sample[0]: pos=", pos, "  m_norm=", m_norm, "  mu_val=", mu_val)
-	
-	if Engine.get_process_frames() % 60 == 0:
-		print("Env M_norm range: [", min_m, ", ", max_m, "]  mu_local range: [", min_mu, ", ", max_mu, "]")
 	
 	var mu_bytes: PackedByteArray = mu_data.to_byte_array()
 	rd.buffer_update(mu_buffer, 0, mu_bytes.size(), mu_bytes)
@@ -328,9 +304,20 @@ func _update_particles(delta: float):
 		elif particle.position.y >= viewport_size.y:
 			particle.position.y -= viewport_size.y
 
-func _draw():
+func _draw() -> void:
+	if particles.is_empty():
+		return
+
+	var radius: float = PARTICLE_RADIUS
+
 	for particle in particles:
-		draw_circle(particle.position, PARTICLE_RADIUS, Color.WHITE)
+		var pos: Vector2 = particle.position
+		var col: Color = Color.WHITE
+
+		if environment_field:
+			col = environment_field.get_environment_color(pos)
+
+		draw_circle(pos, radius, col)
 
 func _process(delta):
 	if not rd:

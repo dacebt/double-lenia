@@ -1,57 +1,41 @@
+class_name EnvironmentField
 extends Node2D
 
 # Environment Field for spatial mu variation
 # Provides Perlin noise-based environment values M in [-1, 1]
 # Used to modulate particle Lenia growth parameter mu
 
-@export_group("Grid")
 @export var grid_resolution: int = 256
+@export var noise_frequency: float = 3.0  # bump this to see more blobs
 
-@export_group("Noise")
-@export var noise_frequency: float = 0.02
-@export var noise_octaves: int = 3
-@export var noise_seed: int = 0
-
-# Field data storage: M values in [-1, 1]
-var values: PackedFloat32Array = PackedFloat32Array()
+var values: PackedFloat32Array
+var field_min: float = 0.0
+var field_max: float = 0.0
 
 # Noise generator
 var noise: FastNoiseLite
 
-# Visualization
-var field_texture: ImageTexture
-var sprite: Sprite2D
-
-func _ready():
+func _ready() -> void:
 	# Create and configure FastNoiseLite
 	noise = FastNoiseLite.new()
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	noise.frequency = noise_frequency
-	noise.seed = noise_seed
-	noise.fractal_octaves = noise_octaves
+	noise.frequency = 1.0  # Use 1.0 as base, we multiply by noise_frequency in sampling
+	noise.seed = 0
 	
-	# Generate the field
 	_generate_field()
-	
-	# Create visualization
-	_create_visualization()
-	
-	# Connect to viewport size changes
-	var vp := get_viewport()
-	if vp:
-		vp.size_changed.connect(_on_viewport_size_changed)
-		_on_viewport_size_changed()  # initial setup
 
 func _generate_field() -> void:
 	values.resize(grid_resolution * grid_resolution)
-	var min_v: float = 999.0
-	var max_v: float = -999.0
+	
+	var min_v: float = 1e20
+	var max_v: float = -1e20
 	
 	for y in range(grid_resolution):
 		for x in range(grid_resolution):
-			var nx: float = float(x) * noise_frequency
-			var ny: float = float(y) * noise_frequency
-			var v: float = noise.get_noise_2d(nx, ny)
+			var nx: float = float(x) / float(grid_resolution)
+			var ny: float = float(y) / float(grid_resolution)
+			
+			var v: float = noise.get_noise_2d(nx * noise_frequency, ny * noise_frequency)
 			var idx: int = y * grid_resolution + x
 			values[idx] = v
 			
@@ -60,7 +44,8 @@ func _generate_field() -> void:
 			if v > max_v:
 				max_v = v
 	
-	print("EnvironmentField: noise value range = [", min_v, ", ", max_v, "]")
+	field_min = min_v
+	field_max = max_v
 
 func sample(world_pos: Vector2) -> float:
 	if grid_resolution <= 1 or values.size() == 0:
@@ -100,64 +85,46 @@ func sample(world_pos: Vector2) -> float:
 	
 	return v_final
 
-func _create_visualization():
-	# Create Image for visualization
-	var image = Image.create(grid_resolution, grid_resolution, false, Image.FORMAT_RGB8)
+func get_environment_color(world_pos: Vector2) -> Color:
+	if values.is_empty():
+		return Color.WHITE
 	
-	# Map field values [-1, 1] to colors
-	# -1 → blue (0.2, 0.2, 0.8)
-	# 0 → gray (0.5, 0.5, 0.5)
-	# +1 → red (0.8, 0.2, 0.2)
-	for y in range(grid_resolution):
-		for x in range(grid_resolution):
-			var index = y * grid_resolution + x
-			var value = values[index]
-			
-			# Map [-1, 1] to color
-			# For negative values: interpolate from blue to gray
-			# For positive values: interpolate from gray to red
-			var color: Color
-			if value < 0.0:
-				# Blue to gray: value goes from -1 to 0
-				var t = (value + 1.0)  # maps -1→0 to 0→1
-				color = Color(0.2, 0.2, 0.8).lerp(Color(0.5, 0.5, 0.5), t)
-			else:
-				# Gray to red: value goes from 0 to 1
-				var t = value  # maps 0→1 to 0→1
-				color = Color(0.5, 0.5, 0.5).lerp(Color(0.8, 0.2, 0.2), t)
-			
-			image.set_pixel(x, y, color)
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size
 	
-	# Create ImageTexture from Image
-	field_texture = ImageTexture.new()
-	field_texture.set_image(image)
+	var u: float = clamp(world_pos.x / vp_size.x, 0.0, 1.0)
+	var v: float = clamp(world_pos.y / vp_size.y, 0.0, 1.0)
 	
-	# Create Sprite2D child for display
-	sprite = Sprite2D.new()
-	sprite.texture = field_texture
-	add_child(sprite)
+	var gx: float = u * float(grid_resolution - 1)
+	var gy: float = v * float(grid_resolution - 1)
 	
-	# Scale sprite to fill viewport
-	_update_sprite_scale()
+	var x0: int = int(floor(gx))
+	var y0: int = int(floor(gy))
+	var x1: int = min(x0 + 1, grid_resolution - 1)
+	var y1: int = min(y0 + 1, grid_resolution - 1)
 	
-	# Set z_index to -1 (behind particles)
-	sprite.z_index = -1
-
-func _update_sprite_scale():
-	if not sprite or not field_texture:
-		return
+	var tx: float = gx - float(x0)
+	var ty: float = gy - float(y0)
 	
-	var viewport_size = get_viewport_rect().size
-	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
-		return
+	var idx00: int = y0 * grid_resolution + x0
+	var idx10: int = y0 * grid_resolution + x1
+	var idx01: int = y1 * grid_resolution + x0
+	var idx11: int = y1 * grid_resolution + x1
 	
-	# Scale sprite to fill viewport
-	var texture_size = field_texture.get_size()
-	if texture_size.x > 0.0 and texture_size.y > 0.0:
-		var scale_x = viewport_size.x / texture_size.x
-		var scale_y = viewport_size.y / texture_size.y
-		sprite.scale = Vector2(scale_x, scale_y)
-		sprite.position = viewport_size / 2.0
-
-func _on_viewport_size_changed() -> void:
-	_update_sprite_scale()
+	var v00: float = values[idx00]
+	var v10: float = values[idx10]
+	var v01: float = values[idx01]
+	var v11: float = values[idx11]
+	
+	var v0: float = lerp(v00, v10, tx)
+	var v1: float = lerp(v01, v11, tx)
+	var v_sample: float = lerp(v0, v1, ty)
+	
+	var range_v: float = max(field_max - field_min, 0.0001)
+	var t: float = clamp((v_sample - field_min) / range_v, 0.0, 1.0)
+	
+	return Color.from_hsv(
+		lerp(0.65, 0.05, t),
+		0.7,
+		0.9,
+		1.0
+	)
