@@ -4,22 +4,48 @@ const PARTICLE_RADIUS = 2.0
 const LOCAL_GROUP_SIZE = 64
 
 @export_group("Particles")
+## Number of particles in the simulation.
 @export var particle_count: int = 50
+
+## Minimum distance between particles. Repulsion activates below this.
 @export var min_dist: float = 10.0
 
-@export_group("Field")
-@export var kernel_radius: float = 50.0        # ring radius r0
-@export var kernel_width: float = 15.0         # ring width s
+@export_group("Particle Interactions")
+## Radius of ring kernel for particle-particle interactions (r0 parameter).
+@export var particle_kernel_radius: float = 50.0
+
+## Width of ring kernel for particle-particle interactions (s parameter).
+@export var particle_kernel_width: float = 15.0
+
+## Width of growth function for particles. Controls response to density differences.
+@export var particle_sigma: float = 0.02
+
+@export_group("Environment Coupling")
+## Base mu value for particles. Combined with environment field to set per-particle mu.
+## NOTE: Will be deprecated in Phase 3 when particles follow field gradient directly.
 @export var mu_base: float = 0.04
+
+## Range of mu variation from environment field. mu = mu_base ± mu_range.
+## NOTE: Will be deprecated in Phase 3.
 @export var mu_range: float = 0.02
-@export var sigma: float = 0.02
+
+## Reference to the environment field that particles interact with.
 @export var environment_field: EnvironmentField = null
 
 @export_group("Forces")
+## Strength of gradient-based movement force.
 @export var gradient_strength: float = 100.0
+
+## Strength of particle repulsion force.
 @export var repulsion_strength: float = 50.0
+
+## Global time scaling for particle movement.
 @export var time_scale: float = 1.0
+
+## Maximum particle speed (0 = unlimited).
 @export var max_speed: float = 0.0
+
+## Velocity smoothing factor (0-1). Higher = smoother velocity changes.
 @export var velocity_smoothing: float = 0.0
 
 var rd: RenderingDevice
@@ -235,11 +261,11 @@ func _upload_uniforms(delta: float):
 	var offset = 0
 	uniform_bytes.encode_float(offset, float(particle_count))
 	offset += 4
-	uniform_bytes.encode_float(offset, kernel_radius)
+	uniform_bytes.encode_float(offset, particle_kernel_radius)
 	offset += 4
-	uniform_bytes.encode_float(offset, kernel_width)
+	uniform_bytes.encode_float(offset, particle_kernel_width)
 	offset += 4
-	uniform_bytes.encode_float(offset, sigma)
+	uniform_bytes.encode_float(offset, particle_sigma)
 	offset += 4
 	uniform_bytes.encode_float(offset, gradient_strength)
 	offset += 4

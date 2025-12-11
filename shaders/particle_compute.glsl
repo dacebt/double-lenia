@@ -23,9 +23,9 @@ layout(set = 0, binding = 2, std430) readonly buffer MuLocals {
 // Uniforms
 layout(set = 0, binding = 3, std140) uniform ParamsBlock {
 	float particle_count;
-	float kernel_radius;       // r0
-	float kernel_width;        // s
-	float sigma;
+	float particle_kernel_radius;       // r0
+	float particle_kernel_width;        // s
+	float particle_sigma;
 	float gradient_strength;
 	float repulsion_strength;
 	float min_dist;
@@ -34,16 +34,16 @@ layout(set = 0, binding = 3, std140) uniform ParamsBlock {
 
 // Ring kernel: exp(-(r - r0)^2 / (2 * s^2))
 float ring_kernel(float r) {
-	float r0 = kernel_radius;
-	float s = max(kernel_width, 0.0001); // avoid divide-by-zero
+	float r0 = particle_kernel_radius;
+	float s = max(particle_kernel_width, 0.0001); // avoid divide-by-zero
 	float dr = r - r0;
 	return exp(-(dr * dr) / (2.0 * s * s));
 }
 
 // Derivative of ring kernel with respect to r
 float ring_kernel_deriv(float r) {
-	float r0 = kernel_radius;
-	float s = max(kernel_width, 0.0001);
+	float r0 = particle_kernel_radius;
+	float s = max(particle_kernel_width, 0.0001);
 	float dr = r - r0;
 	// d/dr of ring_kernel(r)
 	return -(dr / (s * s)) * ring_kernel(r);
@@ -68,7 +68,7 @@ float calculate_field(vec2 pos) {
 float calculate_growth_mu(float u, float mu_local_val) {
 	float diff = u - mu_local_val;
 	float diff_sq = diff * diff;
-	float sigma_sq = sigma * sigma;
+	float sigma_sq = particle_sigma * particle_sigma;
 	return 2.0 * exp(-(diff_sq / (2.0 * sigma_sq))) - 1.0;
 }
 
@@ -103,7 +103,7 @@ vec2 calculate_gradient(vec2 pos, int index) {
 	// Compute growth function G(U) with local mu
 	float G = calculate_growth_mu(U, mu_loc);
 	float G_plus_one = G + 1.0;
-	float sigma_sq = sigma * sigma;
+	float sigma_sq = particle_sigma * particle_sigma;
 	
 	// Compute derivative dG/dU
 	float dG_dU = (mu_loc - U) / sigma_sq * G_plus_one;
