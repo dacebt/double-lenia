@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://d2acdqjjq64cf"
+path="res://.godot/imported/particle_deposit.glsl-5df360dd8379bcbb17f818688e4fcf92.res"
+
+[deps]
+
+source_file="res://shaders/particle_deposit.glsl"
+dest_files=["res://.godot/imported/particle_deposit.glsl-5df360dd8379bcbb17f818688e4fcf92.res"]
+
+[params]
+

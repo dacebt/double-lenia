@@ -55,8 +55,10 @@ var position_buffer: RID
 var velocity_buffer: RID
 var mu_buffer: RID
 var field_buffer: RID
+var field_buffer_size: int = 0  # Track field buffer size (buffer_get_size doesn't exist in Godot 4.4)
 var uniform_buffer: RID
-var uniform_set: RID
+var uniform_sets: Array[RID] = [RID(), RID()]  # Two sets, one per field buffer
+var current_field_index: int = 0
 
 var particles: Array[Particle] = []
 var positions_data: PackedFloat32Array
@@ -69,8 +71,17 @@ func _ready():
 		push_error("Failed to create RenderingDevice")
 		return
 	
+	# Initialize environment field with our RenderingDevice
+	if environment_field:
+		environment_field.initialize_gpu(rd)
+	
 	_setup_compute_shader()
 	spawn_particles()
+	
+	# Defer buffer creation to ensure environment_field is ready
+	call_deferred("_deferred_init")
+
+func _deferred_init():
 	_update_buffers()
 
 func _setup_compute_shader():
@@ -123,57 +134,107 @@ func _create_buffers():
 	# Create position buffer
 	positions_data.resize(particle_count * 2)
 	position_buffer = rd.storage_buffer_create(buffer_size)
+	if not position_buffer.is_valid():
+		push_error("Failed to create position buffer")
+		return
 	
 	# Create velocity buffer
 	velocities_data.resize(particle_count * 2)
 	velocity_buffer = rd.storage_buffer_create(buffer_size)
+	if not velocity_buffer.is_valid():
+		push_error("Failed to create velocity buffer")
+		return
 	
 	# Create mu buffer (one float per particle)
 	mu_data.resize(particle_count)
 	var mu_buffer_size = particle_count * float_size
 	mu_buffer = rd.storage_buffer_create(mu_buffer_size)
+	if not mu_buffer.is_valid():
+		push_error("Failed to create mu buffer")
+		return
 	
 	# Create field buffer (read-only, will be resized when field is available)
-	# Initial size: 0, will be resized in _upload_field() when environment_field is set
-	field_buffer = rd.storage_buffer_create(0)
+	# Initial size: 4 bytes (1 float) as placeholder, will be resized in _upload_field() when environment_field is set
+	field_buffer = rd.storage_buffer_create(4)
+	field_buffer_size = 4
+	if not field_buffer.is_valid():
+		push_error("Failed to create field buffer")
+		return
 	
 	# Create uniform buffer (48 bytes = 12 floats for std140 alignment)
 	var uniform_data = PackedByteArray()
 	uniform_data.resize(48)  # 12 floats * 4 bytes
 	uniform_buffer = rd.uniform_buffer_create(48)
+	if not uniform_buffer.is_valid():
+		push_error("Failed to create uniform buffer")
+		return
 	
-	# Create uniform set with updated bindings:
-	# binding 0: positions
-	# binding 1: velocities
-	# binding 2: mu_locals
-	# binding 3: params (uniform buffer)
-	# binding 4: field (read-only storage buffer)
-	var pos_uniform := RDUniform.new()
-	pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	pos_uniform.binding = 0
-	pos_uniform.add_id(position_buffer)
+	# Create two uniform sets, one for each field buffer (ping-pong)
+	# This avoids recreating uniform sets every frame
+	# Validate all buffers before creating uniform sets
+	if not position_buffer.is_valid():
+		push_error("Position buffer is not valid")
+		return
+	if not velocity_buffer.is_valid():
+		push_error("Velocity buffer is not valid")
+		return
+	if not mu_buffer.is_valid():
+		push_error("Mu buffer is not valid")
+		return
+	if not uniform_buffer.is_valid():
+		push_error("Uniform buffer is not valid")
+		return
 	
-	var vel_uniform := RDUniform.new()
-	vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	vel_uniform.binding = 1
-	vel_uniform.add_id(velocity_buffer)
-	
-	var mu_uniform := RDUniform.new()
-	mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	mu_uniform.binding = 2
-	mu_uniform.add_id(mu_buffer)
-	
-	var params_uniform := RDUniform.new()
-	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-	params_uniform.binding = 3
-	params_uniform.add_id(uniform_buffer)
-	
-	var field_uniform := RDUniform.new()
-	field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	field_uniform.binding = 4
-	field_uniform.add_id(field_buffer)
-	
-	uniform_set = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
+	for buffer_index in range(2):
+		var pos_uniform := RDUniform.new()
+		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		pos_uniform.binding = 0
+		pos_uniform.add_id(position_buffer)
+		
+		var vel_uniform := RDUniform.new()
+		vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		vel_uniform.binding = 1
+		vel_uniform.add_id(velocity_buffer)
+		
+		var mu_uniform := RDUniform.new()
+		mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		mu_uniform.binding = 2
+		mu_uniform.add_id(mu_buffer)
+		
+		var params_uniform := RDUniform.new()
+		params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
+		params_uniform.binding = 3
+		params_uniform.add_id(uniform_buffer)
+		
+		# Get field buffer directly from environment (no copy needed)
+		var field_buffer_rid: RID = RID()
+		
+		# Try to get field buffer from environment
+		if environment_field and environment_field.has_method("get_field_buffer"):
+			field_buffer_rid = environment_field.get_field_buffer(buffer_index)
+		
+		# Fallback to placeholder if field buffer not available
+		if not field_buffer_rid.is_valid():
+			push_warning("Environment field buffer %d not ready, using placeholder" % buffer_index)
+			if not field_buffer.is_valid():
+				field_buffer = rd.storage_buffer_create(4)  # Minimal placeholder
+				field_buffer_size = 4
+			field_buffer_rid = field_buffer
+		
+		if not field_buffer_rid.is_valid():
+			push_error("Field buffer RID %d is not valid" % buffer_index)
+			continue
+		
+		var field_uniform := RDUniform.new()
+		field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		field_uniform.binding = 4
+		field_uniform.add_id(field_buffer_rid)
+		
+		uniform_sets[buffer_index] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
+		if not uniform_sets[buffer_index].is_valid():
+			push_error("Failed to create uniform set %d" % buffer_index)
+		else:
+			print("Created uniform_sets[%d] with field_buffer RID: %s" % [buffer_index, field_buffer_rid])
 
 func _update_buffers():
 	# Resize buffers if particle count changed
@@ -197,41 +258,48 @@ func _update_buffers():
 	velocity_buffer = rd.storage_buffer_create(buffer_size)
 	mu_buffer = rd.storage_buffer_create(mu_buffer_size)
 	
-	# Field buffer will be resized in _upload_field() if environment_field is available
-	# Don't recreate it here, just ensure it exists
-	if not field_buffer.is_valid():
-		field_buffer = rd.storage_buffer_create(0)
-	
-	# Recreate uniform set with updated bindings
-	if uniform_set.is_valid():
-		rd.free_rid(uniform_set)
-	
-	var pos_uniform := RDUniform.new()
-	pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	pos_uniform.binding = 0
-	pos_uniform.add_id(position_buffer)
-	
-	var vel_uniform := RDUniform.new()
-	vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	vel_uniform.binding = 1
-	vel_uniform.add_id(velocity_buffer)
-	
-	var mu_uniform := RDUniform.new()
-	mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	mu_uniform.binding = 2
-	mu_uniform.add_id(mu_buffer)
-	
-	var params_uniform := RDUniform.new()
-	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-	params_uniform.binding = 3
-	params_uniform.add_id(uniform_buffer)
-	
-	var field_uniform := RDUniform.new()
-	field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	field_uniform.binding = 4
-	field_uniform.add_id(field_buffer)
-	
-	uniform_set = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
+	# Field buffer is now accessed directly from environment_field (no local copy needed)
+	# Recreate both uniform sets with updated particle buffers
+	for buffer_index in range(2):
+		if uniform_sets[buffer_index].is_valid():
+			rd.free_rid(uniform_sets[buffer_index])
+		
+		var field_buffer_rid: RID = RID()
+		if environment_field and environment_field.has_method("get_field_buffer"):
+			field_buffer_rid = environment_field.get_field_buffer(buffer_index)
+		
+		if not field_buffer_rid.is_valid():
+			if not field_buffer.is_valid():
+				field_buffer = rd.storage_buffer_create(4)
+				field_buffer_size = 4
+			field_buffer_rid = field_buffer
+		
+		var pos_uniform := RDUniform.new()
+		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		pos_uniform.binding = 0
+		pos_uniform.add_id(position_buffer)
+		
+		var vel_uniform := RDUniform.new()
+		vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		vel_uniform.binding = 1
+		vel_uniform.add_id(velocity_buffer)
+		
+		var mu_uniform := RDUniform.new()
+		mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		mu_uniform.binding = 2
+		mu_uniform.add_id(mu_buffer)
+		
+		var params_uniform := RDUniform.new()
+		params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
+		params_uniform.binding = 3
+		params_uniform.add_id(uniform_buffer)
+		
+		var field_uniform := RDUniform.new()
+		field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		field_uniform.binding = 4
+		field_uniform.add_id(field_buffer_rid)
+		
+		uniform_sets[buffer_index] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
 
 func spawn_particles():
 	particles.clear()
@@ -311,6 +379,12 @@ func _upload_uniforms(delta: float):
 	uniform_bytes.encode_float(offset, 0.0)
 	
 	rd.buffer_update(uniform_buffer, 0, uniform_bytes.size(), uniform_bytes)
+	
+	# Debug: verify uniforms are being sent
+	if Engine.get_process_frames() % 120 == 0:
+		print("Uniforms - gradient: %.1f, repulsion: %.1f, viewport: %.0fx%.0f, grid: %.0f" % [
+			gradient_strength, repulsion_strength, viewport_size.x, viewport_size.y, field_grid_size
+		])
 
 func _upload_field():
 	## Upload field data from environment_field to GPU buffer.
@@ -325,41 +399,14 @@ func _upload_field():
 	var buffer_size = grid_res * grid_res * 4  # 1 float per cell * 4 bytes
 	
 	# Resize buffer if needed
-	if not field_buffer.is_valid() or buffer_size != rd.buffer_get_size(field_buffer):
+	if not field_buffer.is_valid() or buffer_size != field_buffer_size:
 		if field_buffer.is_valid():
 			rd.free_rid(field_buffer)
 		field_buffer = rd.storage_buffer_create(buffer_size)
+		field_buffer_size = buffer_size
 		
-		# Recreate uniform set with new field buffer
-		if uniform_set.is_valid():
-			rd.free_rid(uniform_set)
-		
-		var pos_uniform := RDUniform.new()
-		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		pos_uniform.binding = 0
-		pos_uniform.add_id(position_buffer)
-		
-		var vel_uniform := RDUniform.new()
-		vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		vel_uniform.binding = 1
-		vel_uniform.add_id(velocity_buffer)
-		
-		var mu_uniform := RDUniform.new()
-		mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		mu_uniform.binding = 2
-		mu_uniform.add_id(mu_buffer)
-		
-		var params_uniform := RDUniform.new()
-		params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-		params_uniform.binding = 3
-		params_uniform.add_id(uniform_buffer)
-		
-		var field_uniform := RDUniform.new()
-		field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		field_uniform.binding = 4
-		field_uniform.add_id(field_buffer)
-		
-		uniform_set = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
+		# Field buffer is now accessed directly from environment_field
+		# Uniform sets are managed separately, no need to recreate here
 	
 	# Upload field data
 	var field_bytes = field_data.to_byte_array()
@@ -374,13 +421,19 @@ func _dispatch_compute(delta: float):
 	# Begin compute list
 	var compute_list = rd.compute_list_begin()
 	rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
-	rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
+	rd.compute_list_bind_uniform_set(compute_list, uniform_sets[current_field_index], 0)
 	rd.compute_list_dispatch(compute_list, workgroups, 1, 1)
 	rd.compute_list_end()
 	
 	# Submit and sync
 	rd.submit()
 	rd.sync()
+	
+	# Debug: verify dispatch happens
+	if Engine.get_process_frames() % 120 == 0:
+		print("Dispatch - workgroups: %d, uniform_set valid: %s" % [
+			workgroups, uniform_sets[current_field_index].is_valid()
+		])
 
 func _read_velocities():
 	# Read velocities from GPU
@@ -422,6 +475,10 @@ func _update_particles(delta: float):
 			particle.position.y += viewport_size.y
 		elif particle.position.y >= viewport_size.y:
 			particle.position.y -= viewport_size.y
+	
+	# Debug: verify positions update
+	if Engine.get_process_frames() % 120 == 0 and particles.size() > 0:
+		print("After update - p0 pos: %s" % particles[0].position)
 
 func _draw() -> void:
 	if particles.is_empty():
@@ -450,32 +507,65 @@ func _process(delta):
 		spawn_particles()
 		_update_buffers()
 	
-	# 1. Upload field to GPU (BEFORE compute so particles see current field)
-	_upload_field()
+	# 1. Evolve field first (GPU evolution)
+	if environment_field:
+		environment_field.evolve(delta)
+		# Update field index to match environment's current buffer
+		current_field_index = environment_field.current_buffer
+		
+		# DEBUG: Verify field buffer has data
+		if Engine.get_process_frames() % 120 == 0:
+			var field_buf = environment_field.get_field_buffer(current_field_index)
+			if field_buf.is_valid():
+				var field_bytes = rd.buffer_get_data(field_buf)
+				var field_floats = field_bytes.to_float32_array()
+				if field_floats.size() >= 10:
+					print("Field buffer[%d] first 10 values: %s" % [current_field_index, str(field_floats.slice(0, 10))])
+				else:
+					print("Field buffer[%d] size: %d floats" % [current_field_index, field_floats.size()])
+			else:
+				print("Field buffer[%d] is INVALID" % current_field_index)
 	
-	# 2-4. Upload particle data and dispatch compute
+	# Debug: check field values and gradients (occasional CPU sync for debug only)
+	if environment_field and Engine.get_process_frames() % 60 == 0:
+		environment_field.sync_to_cpu()  # Sync only for debug output
+		var center = get_viewport_rect().size / 2.0
+		var val_center = environment_field.sample(center)
+		var val_right = environment_field.sample(center + Vector2(10, 0))
+		var val_up = environment_field.sample(center + Vector2(0, 10))
+		var grad = Vector2(val_right - val_center, val_up - val_center) / 10.0
+		print("Field center: %.4f, gradient mag: %.6f, min: %.4f, max: %.4f" % [val_center, grad.length(), environment_field.field_min, environment_field.field_max])
+	
+	# 3. Upload particle data and dispatch compute
 	_upload_positions()
 	_upload_mu_locals()
 	_dispatch_compute(delta)
 	
-	# 5-6. Read results and update positions
+	# 4. Read results and move particles
 	_read_velocities()
+	
+	# Debug: verify velocity values
+	if Engine.get_process_frames() % 120 == 0:
+		if particles.size() > 0:
+			print("Velocity p0: %s, position p0: %s" % [particles[0].velocity, particles[0].position])
+	
 	_update_particles(delta)
 	
-	# 7-8. Deposit particles to field and sync back to GPU
+	# 5. GPU deposits (no CPU sync)
 	if environment_field:
-		var positions = PackedVector2Array()
-		for p in particles:
-			positions.append(p.position)
-		environment_field.deposit_particles(positions)
-		environment_field.sync_field_to_gpu()
+		environment_field.deposit_particles_gpu(position_buffer, particle_count, get_viewport_rect().size)
+	
+	# 6. Update visualization occasionally (minimal CPU sync only for display)
+	if environment_field and Engine.get_process_frames() % 5 == 0:
+		environment_field.update_display()
 	
 	queue_redraw()
 
 func _exit_tree():
 	# Cleanup
-	if uniform_set.is_valid():
-		rd.free_rid(uniform_set)
+	for i in range(uniform_sets.size()):
+		if uniform_sets[i].is_valid():
+			rd.free_rid(uniform_sets[i])
 	if uniform_buffer.is_valid():
 		rd.free_rid(uniform_buffer)
 	if field_buffer.is_valid():

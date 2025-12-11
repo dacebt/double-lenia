@@ -5,15 +5,16 @@
 
 [node name="Main" type="Node2D" node_paths=PackedStringArray("environment_field")]
 script = ExtResource("1_0")
-particle_count = 1500
-kernel_radius = 1.0
-kernel_width = 100.0
-mu_base = 0.05
-mu_range = 0.5
+particle_count = 450
+min_dist = 20.0
+particle_kernel_radius = 30.0
+particle_kernel_width = 30.0
+mu_base = 1.0
+mu_range = 1.0
 environment_field = NodePath("EnvironmentField")
-gradient_strength = 1000.0
-repulsion_strength = 500.0
-time_scale = 500.0
-max_speed = 0.1
+gradient_strength = 176.535
+repulsion_strength = 99.0
+time_scale = 50.0
+velocity_smoothing = 5.0
 
 [node name="EnvironmentField" parent="." instance=ExtResource("2_0")]

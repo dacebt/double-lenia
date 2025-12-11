@@ -92,7 +92,7 @@ void main() {
 		U /= kernel_sum;
 	}
 	
-	// Lenia growth function: G(U) = 2·exp(-(U-μ)²/(2σ²)) - 1
+	// Lenia growth function: G(U) = 2*exp(-(U-mu)^2/(2*sigma^2)) - 1
 	float diff = U - mu;
 	float diff_sq = diff * diff;
 	float sigma_sq = sigma * sigma;
@@ -101,9 +101,9 @@ void main() {
 	// Euler integration: M_new = M_old + dt * G(U)
 	float M_new = M_current + dt * G;
 	
-	// Clamp to reasonable range to prevent numerical issues
-	// Field values should stay in [-1, 1] range (matching Perlin noise output)
-	M_new = clamp(M_new, -2.0, 2.0);
+	// Clamp field to valid range to prevent unbounded growth
+	// Field values should stay in [0, 1] range (growth function assumes this)
+	M_new = clamp(M_new, 0.0, 1.0);
 	
 	// Write output
 	field_out[idx(pos.x, pos.y)] = M_new;

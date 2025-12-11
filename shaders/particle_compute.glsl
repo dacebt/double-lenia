@@ -64,6 +64,9 @@ float sample_field(vec2 world_pos) {
 		return 0.0;
 	}
 	
+	// Calculate buffer size (field_grid_size * field_grid_size)
+	int buffer_size = int(field_grid_size * field_grid_size);
+	
 	// Convert world position to UV coordinates [0, 1]
 	vec2 uv = world_pos / vec2(viewport_width, viewport_height);
 	uv = clamp(uv, 0.0, 1.0);
@@ -88,10 +91,11 @@ float sample_field(vec2 world_pos) {
 	int idx01 = y1 * int(field_grid_size) + x0;
 	int idx11 = y1 * int(field_grid_size) + x1;
 	
-	float v00 = (idx00 < field_data.length()) ? field_data[idx00] : 0.0;
-	float v10 = (idx10 < field_data.length()) ? field_data[idx10] : 0.0;
-	float v01 = (idx01 < field_data.length()) ? field_data[idx01] : 0.0;
-	float v11 = (idx11 < field_data.length()) ? field_data[idx11] : 0.0;
+	// Bounds check using calculated buffer size instead of .length()
+	float v00 = (idx00 >= 0 && idx00 < buffer_size) ? field_data[idx00] : 0.0;
+	float v10 = (idx10 >= 0 && idx10 < buffer_size) ? field_data[idx10] : 0.0;
+	float v01 = (idx01 >= 0 && idx01 < buffer_size) ? field_data[idx01] : 0.0;
+	float v11 = (idx11 >= 0 && idx11 < buffer_size) ? field_data[idx11] : 0.0;
 	
 	// Bilinear interpolation
 	float v0 = mix(v00, v10, tx);
@@ -149,7 +153,7 @@ vec2 calculate_gradient(vec2 pos, int index) {
 	U /= particle_count;
 	gradU /= particle_count;
 	
-	// Fetch local μ for this particle (index is passed as parameter)
+	// Fetch local mu for this particle (index is passed as parameter)
 	float mu_loc = mu_locals[index];
 	
 	// Compute growth function G(U) with local mu
@@ -201,8 +205,10 @@ void main() {
 	vec2 repulsion = calculate_repulsion(int(i));
 	
 	// Compute field gradient via central differences
-	float epsilon = 2.0;  // world units for gradient sampling
-	float field_here = sample_field(pos);
+	// Epsilon scales with viewport/grid ratio to span multiple grid cells
+	float epsilon = max(viewport_width, viewport_height) / field_grid_size * 2.0;
+	
+	// Sample field using the fixed sample_field function
 	float field_right = sample_field(pos + vec2(epsilon, 0.0));
 	float field_left = sample_field(pos - vec2(epsilon, 0.0));
 	float field_up = sample_field(pos + vec2(0.0, epsilon));
@@ -213,10 +219,9 @@ void main() {
 		(field_up - field_down) / (2.0 * epsilon)
 	);
 	
-	// Output velocity using field gradient
+	// Apply gradient and repulsion
 	vec2 v = field_gradient * gradient_strength;
 	
-	// Add repulsion
 	if (repulsion_strength > 0.0) {
 		v += repulsion * repulsion_strength;
 	}

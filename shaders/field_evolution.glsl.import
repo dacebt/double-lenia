@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://b4sjokrsvdm4o"
+path="res://.godot/imported/field_evolution.glsl-47bf93439cb75cc1291717c1a5115747.res"
+
+[deps]
+
+source_file="res://shaders/field_evolution.glsl"
+dest_files=["res://.godot/imported/field_evolution.glsl-47bf93439cb75cc1291717c1a5115747.res"]
+
+[params]
+
