@@ -8,12 +8,12 @@ const LOCAL_GROUP_SIZE = 64
 @export var min_dist: float = 10.0
 
 @export_group("Field")
-@export var kernel_radius: float = 50.0
-@export var mu: float = 0.04  # Legacy, kept for compatibility
+@export var kernel_radius: float = 50.0        # ring radius r0
+@export var kernel_width: float = 15.0         # ring width s
 @export var mu_base: float = 0.04
 @export var mu_range: float = 0.02
 @export var sigma: float = 0.02
-@export var environment_field: Node2D = null
+@export var environment_field: Node = null
 
 @export_group("Forces")
 @export var gradient_strength: float = 100.0
@@ -210,22 +210,40 @@ func _upload_positions():
 
 func _upload_mu_locals():
 	# Sample environment and compute mu_local for each particle
-	var viewport_size = get_viewport_rect().size
+	var min_m: float = 999.0
+	var max_m: float = -999.0
+	var min_mu: float = 999.0
+	var max_mu: float = -999.0
+	
+	if Engine.get_process_frames() % 60 == 0:
+		print("EnvRef: ", environment_field)
 	
 	for i in range(particles.size()):
-		var pos = particles[i].position
-		var m_norm := 0.0
+		var pos: Vector2 = particles[i].position
 		
+		var m_norm: float = 0.0
 		if environment_field and environment_field.has_method("sample"):
-			m_norm = environment_field.sample(pos)
-			# Ensure m_norm is in [-1, 1] range
-			m_norm = clamp(m_norm, -1.0, 1.0)
+			m_norm = environment_field.call("sample", pos)
 		
-		var mu_local = mu_base + mu_range * m_norm
-		mu_data[i] = mu_local
+		var mu_val: float = mu_base + mu_range * m_norm
+		mu_data[i] = mu_val
+		
+		if m_norm < min_m:
+			min_m = m_norm
+		if m_norm > max_m:
+			max_m = m_norm
+		if mu_val < min_mu:
+			min_mu = mu_val
+		if mu_val > max_mu:
+			max_mu = mu_val
+		
+		if i == 0 and Engine.get_process_frames() % 60 == 0:
+			print("Sample[0]: pos=", pos, "  m_norm=", m_norm, "  mu_val=", mu_val)
 	
-	# Upload to GPU
-	var mu_bytes = mu_data.to_byte_array()
+	if Engine.get_process_frames() % 60 == 0:
+		print("Env M_norm range: [", min_m, ", ", max_m, "]  mu_local range: [", min_mu, ", ", max_mu, "]")
+	
+	var mu_bytes: PackedByteArray = mu_data.to_byte_array()
 	rd.buffer_update(mu_buffer, 0, mu_bytes.size(), mu_bytes)
 
 func _upload_uniforms(delta: float):
@@ -238,7 +256,7 @@ func _upload_uniforms(delta: float):
 	offset += 4
 	uniform_bytes.encode_float(offset, kernel_radius)
 	offset += 4
-	uniform_bytes.encode_float(offset, mu)
+	uniform_bytes.encode_float(offset, kernel_width)
 	offset += 4
 	uniform_bytes.encode_float(offset, sigma)
 	offset += 4

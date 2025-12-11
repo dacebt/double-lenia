@@ -22,9 +22,9 @@ layout(set = 0, binding = 2) readonly buffer MuLocals {
 
 // Uniforms
 layout(set = 0, binding = 3) uniform Uniforms {
-	float particle_count;  // cast to int when using
-	float kernel_radius;
-	float mu;              // kept for compatibility, unused now
+	float particle_count;
+	float kernel_radius;       // r0
+	float kernel_width;        // s
 	float sigma;
 	float gradient_strength;
 	float repulsion_strength;
@@ -32,15 +32,33 @@ layout(set = 0, binding = 3) uniform Uniforms {
 	float delta_time;
 };
 
+// Ring kernel: exp(-(r - r0)^2 / (2 * s^2))
+float ring_kernel(float r) {
+	float r0 = kernel_radius;
+	float s = max(kernel_width, 0.0001); // avoid divide-by-zero
+	float dr = r - r0;
+	return exp(-(dr * dr) / (2.0 * s * s));
+}
+
+// Derivative of ring kernel with respect to r
+float ring_kernel_deriv(float r) {
+	float r0 = kernel_radius;
+	float s = max(kernel_width, 0.0001);
+	float dr = r - r0;
+	// d/dr of ring_kernel(r)
+	return -(dr / (s * s)) * ring_kernel(r);
+}
+
 // Calculate field U at position pos
 float calculate_field(vec2 pos) {
 	float U = 0.0;
-	float kernel_radius_sq = kernel_radius * kernel_radius;
 	
 	for (int j = 0; j < int(particle_count); j++) {
 		vec2 diff = pos - positions[j];
-		float dist_sq = dot(diff, diff);
-		U += exp(-dist_sq / (2.0 * kernel_radius_sq));
+		float r2 = dot(diff, diff);
+		float r = sqrt(r2);
+		float k = ring_kernel(r);
+		U += k;
 	}
 	
 	return U / particle_count;
@@ -58,16 +76,21 @@ float calculate_growth_mu(float u, float mu_local_val) {
 vec2 calculate_gradient(vec2 pos, int index) {
 	float U = 0.0;
 	vec2 gradU = vec2(0.0);
-	float kernel_radius_sq = kernel_radius * kernel_radius;
 	
 	// Compute U and gradU in one loop
 	for (int j = 0; j < int(particle_count); j++) {
 		vec2 diff = pos - positions[j];
-		float dist_sq = dot(diff, diff);
-		float k = exp(-dist_sq / (2.0 * kernel_radius_sq));
+		float r2 = dot(diff, diff);
+		float r = sqrt(r2);
 		
+		float k = ring_kernel(r);
 		U += k;
-		gradU += (-1.0 / kernel_radius_sq) * diff * k;
+		
+		if (r > 0.0) {
+			float dk_dr = ring_kernel_deriv(r);
+			// grad k_j = dk/dr * (x - p_j)/r
+			gradU += (dk_dr / r) * diff;
+		}
 	}
 	
 	// Normalize by particle count
@@ -75,7 +98,10 @@ vec2 calculate_gradient(vec2 pos, int index) {
 	gradU /= particle_count;
 	
 	// Fetch local μ for this particle
-	float mu_loc = mu_local[index];
+	// DEBUG: hard-disable environment coupling
+	// float mu_loc = mu_local[index];
+	// Instead:
+	float mu_loc = 0.04; // some constant
 	
 	// Compute growth function G(U) with local mu
 	float G = calculate_growth_mu(U, mu_loc);

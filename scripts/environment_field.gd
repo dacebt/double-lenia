@@ -1,8 +1,8 @@
 extends Node2D
 
-# Environment Field for spatial μ variation
+# Environment Field for spatial mu variation
 # Provides Perlin noise-based environment values M in [-1, 1]
-# Used to modulate particle Lenia growth parameter μ
+# Used to modulate particle Lenia growth parameter mu
 
 @export_group("Grid")
 @export var grid_resolution: int = 256
@@ -13,7 +13,7 @@ extends Node2D
 @export var noise_seed: int = 0
 
 # Field data storage: M values in [-1, 1]
-var field_data: PackedFloat32Array = PackedFloat32Array()
+var values: PackedFloat32Array = PackedFloat32Array()
 
 # Noise generator
 var noise: FastNoiseLite
@@ -42,66 +42,63 @@ func _ready():
 		vp.size_changed.connect(_on_viewport_size_changed)
 		_on_viewport_size_changed()  # initial setup
 
-func _generate_field():
-	# Resize field_data to grid_resolution × grid_resolution
-	field_data.resize(grid_resolution * grid_resolution)
+func _generate_field() -> void:
+	values.resize(grid_resolution * grid_resolution)
+	var min_v: float = 999.0
+	var max_v: float = -999.0
 	
-	# Generate noise values for each grid cell
 	for y in range(grid_resolution):
 		for x in range(grid_resolution):
-			# Sample noise (already returns roughly [-1, 1])
-			var noise_value = noise.get_noise_2d(float(x), float(y))
+			var nx: float = float(x) * noise_frequency
+			var ny: float = float(y) * noise_frequency
+			var v: float = noise.get_noise_2d(nx, ny)
+			var idx: int = y * grid_resolution + x
+			values[idx] = v
 			
-			# Store in field_data (row-major order: y * width + x)
-			var index = y * grid_resolution + x
-			field_data[index] = noise_value
+			if v < min_v:
+				min_v = v
+			if v > max_v:
+				max_v = v
+	
+	print("EnvironmentField: noise value range = [", min_v, ", ", max_v, "]")
 
 func sample(world_pos: Vector2) -> float:
-	# Get viewport size
-	var viewport_size = get_viewport_rect().size
+	if grid_resolution <= 1 or values.size() == 0:
+		return 0.0
+	
+	var viewport_size: Vector2 = get_viewport_rect().size
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return 0.0
 	
-	# Convert world position to normalized UV coordinates
-	var uv = world_pos / viewport_size
+	var u: float = clamp(world_pos.x / viewport_size.x, 0.0, 1.0)
+	var v: float = clamp(world_pos.y / viewport_size.y, 0.0, 1.0)
 	
-	# Clamp UV to [0, 1] range
-	uv.x = clamp(uv.x, 0.0, 1.0)
-	uv.y = clamp(uv.y, 0.0, 1.0)
+	var fx: float = u * float(grid_resolution - 1)
+	var fy: float = v * float(grid_resolution - 1)
 	
-	# Convert UV to grid coordinates
-	var gx = uv.x * float(grid_resolution)
-	var gy = uv.y * float(grid_resolution)
+	var x0: int = int(fx)
+	var y0: int = int(fy)
+	var x1: int = min(x0 + 1, grid_resolution - 1)
+	var y1: int = min(y0 + 1, grid_resolution - 1)
 	
-	# Get integer grid coordinates for bilinear interpolation
-	var g0x = int(floor(gx))
-	var g0y = int(floor(gy))
-	var g1x = min(g0x + 1, grid_resolution - 1)
-	var g1y = min(g0y + 1, grid_resolution - 1)
+	var tx: float = fx - float(x0)
+	var ty: float = fy - float(y0)
 	
-	# Get fractional parts for interpolation
-	var fx = gx - float(g0x)
-	var fy = gy - float(g0y)
+	var idx00: int = y0 * grid_resolution + x0
+	var idx10: int = y0 * grid_resolution + x1
+	var idx01: int = y1 * grid_resolution + x0
+	var idx11: int = y1 * grid_resolution + x1
 	
-	# Clamp grid coordinates to valid range
-	g0x = clamp(g0x, 0, grid_resolution - 1)
-	g0y = clamp(g0y, 0, grid_resolution - 1)
+	var v00: float = values[idx00]
+	var v10: float = values[idx10]
+	var v01: float = values[idx01]
+	var v11: float = values[idx11]
 	
-	# Sample four corner values
-	var v00 = field_data[g0y * grid_resolution + g0x]  # bottom-left
-	var v10 = field_data[g0y * grid_resolution + g1x]  # bottom-right
-	var v01 = field_data[g1y * grid_resolution + g0x]  # top-left
-	var v11 = field_data[g1y * grid_resolution + g1x]  # top-right
+	var v0: float = lerp(v00, v10, tx)
+	var v1: float = lerp(v01, v11, tx)
+	var v_final: float = lerp(v0, v1, ty)
 	
-	# Bilinear interpolation
-	# First interpolate along x-axis
-	var v0 = lerp(v00, v10, fx)  # bottom edge
-	var v1 = lerp(v01, v11, fx)  # top edge
-	
-	# Then interpolate along y-axis
-	var result = lerp(v0, v1, fy)
-	
-	return result
+	return v_final
 
 func _create_visualization():
 	# Create Image for visualization
@@ -114,7 +111,7 @@ func _create_visualization():
 	for y in range(grid_resolution):
 		for x in range(grid_resolution):
 			var index = y * grid_resolution + x
-			var value = field_data[index]
+			var value = values[index]
 			
 			# Map [-1, 1] to color
 			# For negative values: interpolate from blue to gray
