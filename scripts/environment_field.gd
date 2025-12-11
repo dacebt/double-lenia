@@ -28,6 +28,12 @@ extends Node2D
 ## Evolution speed multiplier. Higher values = faster field changes. Includes time scaling.
 @export var field_dt: float = 0.1
 
+## Amount of density each particle deposits into the field per frame.
+@export var deposit_amount: float = 0.01
+
+## Radius of Gaussian splat when particles deposit into field.
+@export var deposit_radius: float = 20.0
+
 # CPU fallback (for reading)
 var values: PackedFloat32Array
 var field_min: float = 0.0
@@ -282,6 +288,96 @@ func _read_field_to_cpu():
 			max_v = v
 	field_min = min_v
 	field_max = max_v
+
+func deposit_particles(positions: PackedVector2Array) -> void:
+	## Deposit particle density into the field.
+	## Takes array of particle world positions and adds Gaussian splats to field.
+	if not use_gpu:
+		# If GPU not available, deposit directly to CPU values
+		_deposit_to_cpu(positions)
+		return
+	
+	# Ensure we have latest field data on CPU
+	if values.size() != grid_resolution * grid_resolution:
+		_read_field_to_cpu()
+	
+	# Deposit to CPU field
+	_deposit_to_cpu(positions)
+	
+	# Update min/max after deposits
+	var min_v: float = 1e20
+	var max_v: float = -1e20
+	for v in values:
+		if v < min_v:
+			min_v = v
+		if v > max_v:
+			max_v = v
+	field_min = min_v
+	field_max = max_v
+
+func _deposit_to_cpu(positions: PackedVector2Array) -> void:
+	## Internal method to deposit particles into CPU field buffer.
+	if values.size() != grid_resolution * grid_resolution:
+		values.resize(grid_resolution * grid_resolution)
+	
+	var viewport_size: Vector2 = get_viewport_rect().size
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+		return
+	
+	var deposit_radius_sq = deposit_radius * deposit_radius
+	var search_pixels = int(ceil(deposit_radius * 2.0))
+	
+	for pos in positions:
+		# Convert world position to grid coordinates
+		var u: float = clamp(pos.x / viewport_size.x, 0.0, 1.0)
+		var v: float = clamp(pos.y / viewport_size.y, 0.0, 1.0)
+		
+		var grid_x: float = u * float(grid_resolution - 1)
+		var grid_y: float = v * float(grid_resolution - 1)
+		
+		var center_x: int = int(round(grid_x))
+		var center_y: int = int(round(grid_y))
+		
+		# Deposit Gaussian splat to nearby cells
+		for dy in range(-search_pixels, search_pixels + 1):
+			for dx in range(-search_pixels, search_pixels + 1):
+				var cell_x = center_x + dx
+				var cell_y = center_y + dy
+				
+				# Wrap coordinates (toroidal)
+				cell_x = (cell_x + grid_resolution) % grid_resolution
+				cell_y = (cell_y + grid_resolution) % grid_resolution
+				
+				# Distance from particle center
+				var dist_x = float(dx)
+				var dist_y = float(dy)
+				var dist_sq = dist_x * dist_x + dist_y * dist_y
+				
+				# Skip if beyond deposit radius
+				if dist_sq > deposit_radius_sq:
+					continue
+				
+				# Gaussian splat: deposit_amount * exp(-dist²/(2*radius²))
+				var splat = deposit_amount * exp(-dist_sq / (2.0 * deposit_radius_sq))
+				
+				# Add to field
+				var idx = cell_y * grid_resolution + cell_x
+				if idx >= 0 and idx < values.size():
+					values[idx] += splat
+
+func sync_field_to_gpu() -> void:
+	## Upload CPU field data back to GPU buffer after deposits.
+	if not use_gpu:
+		return
+	
+	# Upload to current buffer (the one we'll read from next)
+	var field_data := PackedByteArray()
+	field_data.resize(grid_resolution * grid_resolution * 4)
+	
+	for i in range(values.size()):
+		field_data.encode_float(i * 4, values[i])
+	
+	rd.buffer_update(field_buffers[current_buffer], 0, field_data.size(), field_data)
 
 func sample(world_pos: Vector2) -> float:
 	if grid_resolution <= 1:
