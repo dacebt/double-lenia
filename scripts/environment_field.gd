@@ -289,6 +289,10 @@ func _read_field_to_cpu():
 	field_min = min_v
 	field_max = max_v
 
+func get_field_data() -> PackedFloat32Array:
+	## Get the current field data array (for particle shader upload).
+	return values
+
 func deposit_particles(positions: PackedVector2Array) -> void:
 	## Deposit particle density into the field.
 	## Takes array of particle world positions and adds Gaussian splats to field.

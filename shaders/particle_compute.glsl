@@ -20,6 +20,11 @@ layout(set = 0, binding = 2, std430) readonly buffer MuLocals {
 	float mu_locals[];
 };
 
+// Input: environment field data (read-only)
+layout(set = 0, binding = 4, std430) readonly buffer FieldData {
+	float field_data[];
+};
+
 // Uniforms
 layout(set = 0, binding = 3, std140) uniform ParamsBlock {
 	float particle_count;
@@ -30,6 +35,10 @@ layout(set = 0, binding = 3, std140) uniform ParamsBlock {
 	float repulsion_strength;
 	float min_dist;
 	float delta_time;
+	float field_grid_size;
+	float viewport_width;
+	float viewport_height;
+	float _padding;  // std140 alignment
 };
 
 // Ring kernel: exp(-(r - r0)^2 / (2 * s^2))
@@ -47,6 +56,49 @@ float ring_kernel_deriv(float r) {
 	float dr = r - r0;
 	// d/dr of ring_kernel(r)
 	return -(dr / (s * s)) * ring_kernel(r);
+}
+
+// Sample environment field at world position with bilinear interpolation
+float sample_field(vec2 world_pos) {
+	if (field_grid_size <= 0.0 || viewport_width <= 0.0 || viewport_height <= 0.0) {
+		return 0.0;
+	}
+	
+	// Convert world position to UV coordinates [0, 1]
+	vec2 uv = world_pos / vec2(viewport_width, viewport_height);
+	uv = clamp(uv, 0.0, 1.0);
+	
+	// Convert UV to grid coordinates
+	float grid_x = uv.x * (field_grid_size - 1.0);
+	float grid_y = uv.y * (field_grid_size - 1.0);
+	
+	// Get integer grid coordinates
+	int x0 = int(floor(grid_x));
+	int y0 = int(floor(grid_y));
+	int x1 = min(x0 + 1, int(field_grid_size) - 1);
+	int y1 = min(y0 + 1, int(field_grid_size) - 1);
+	
+	// Interpolation factors
+	float tx = grid_x - float(x0);
+	float ty = grid_y - float(y0);
+	
+	// Get field values at corners
+	int idx00 = y0 * int(field_grid_size) + x0;
+	int idx10 = y0 * int(field_grid_size) + x1;
+	int idx01 = y1 * int(field_grid_size) + x0;
+	int idx11 = y1 * int(field_grid_size) + x1;
+	
+	float v00 = (idx00 < field_data.length()) ? field_data[idx00] : 0.0;
+	float v10 = (idx10 < field_data.length()) ? field_data[idx10] : 0.0;
+	float v01 = (idx01 < field_data.length()) ? field_data[idx01] : 0.0;
+	float v11 = (idx11 < field_data.length()) ? field_data[idx11] : 0.0;
+	
+	// Bilinear interpolation
+	float v0 = mix(v00, v10, tx);
+	float v1 = mix(v01, v11, tx);
+	float v_final = mix(v0, v1, ty);
+	
+	return v_final;
 }
 
 // Calculate field U at position pos
@@ -143,22 +195,28 @@ void main() {
 		return;
 	}
 	
-	float mu_local = mu_locals[i];
-	
 	vec2 pos = positions[i];
-	
-	// Calculate gradient with per-particle mu_local
-	vec2 gradient = calculate_gradient(pos, int(i));
 	
 	// Calculate repulsion
 	vec2 repulsion = calculate_repulsion(int(i));
 	
-	// Temporary boost factor to make environment effect visible
-	// Map mu_local from [0, 1] into [0.5, 1.5] factor
-	float mu_factor = 0.5 + 1.0 * clamp(mu_local, 0.0, 1.0);
+	// Compute field gradient via central differences
+	float epsilon = 2.0;  // world units for gradient sampling
+	float field_here = sample_field(pos);
+	float field_right = sample_field(pos + vec2(epsilon, 0.0));
+	float field_left = sample_field(pos - vec2(epsilon, 0.0));
+	float field_up = sample_field(pos + vec2(0.0, epsilon));
+	float field_down = sample_field(pos - vec2(0.0, epsilon));
 	
-	// Output velocity with mu_factor boost
-	vec2 v = gradient * gradient_strength * mu_factor;
+	vec2 field_gradient = vec2(
+		(field_right - field_left) / (2.0 * epsilon),
+		(field_up - field_down) / (2.0 * epsilon)
+	);
+	
+	// Output velocity using field gradient
+	vec2 v = field_gradient * gradient_strength;
+	
+	// Add repulsion
 	if (repulsion_strength > 0.0) {
 		v += repulsion * repulsion_strength;
 	}
