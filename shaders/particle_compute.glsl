@@ -16,12 +16,12 @@ layout(set = 0, binding = 1) writeonly buffer Velocities {
 };
 
 // Input: per-particle mu_local values
-layout(set = 0, binding = 2) readonly buffer MuLocals {
-	float mu_local[];
+layout(set = 0, binding = 2, std430) readonly buffer MuLocals {
+	float mu_locals[];
 };
 
 // Uniforms
-layout(set = 0, binding = 3) uniform Uniforms {
+layout(set = 0, binding = 3, std140) uniform ParamsBlock {
 	float particle_count;
 	float kernel_radius;       // r0
 	float kernel_width;        // s
@@ -97,11 +97,8 @@ vec2 calculate_gradient(vec2 pos, int index) {
 	U /= particle_count;
 	gradU /= particle_count;
 	
-	// Fetch local μ for this particle
-	// DEBUG: hard-disable environment coupling
-	// float mu_loc = mu_local[index];
-	// Instead:
-	float mu_loc = 0.04; // some constant
+	// Fetch local μ for this particle (index is passed as parameter)
+	float mu_loc = mu_locals[index];
 	
 	// Compute growth function G(U) with local mu
 	float G = calculate_growth_mu(U, mu_loc);
@@ -140,26 +137,32 @@ vec2 calculate_repulsion(int i) {
 }
 
 void main() {
-	uint index = gl_GlobalInvocationID.x;
+	uint i = gl_GlobalInvocationID.x;
 	
-	if (index >= uint(int(particle_count))) {
+	if (i >= uint(particle_count)) {
 		return;
 	}
 	
-	vec2 pos = positions[index];
+	float mu_local = mu_locals[i];
+	
+	vec2 pos = positions[i];
 	
 	// Calculate gradient with per-particle mu_local
-	vec2 gradient = calculate_gradient(pos, int(index));
+	vec2 gradient = calculate_gradient(pos, int(i));
 	
 	// Calculate repulsion
-	vec2 repulsion = calculate_repulsion(int(index));
+	vec2 repulsion = calculate_repulsion(int(i));
 	
-	// Output velocity
-	vec2 v = gradient * gradient_strength;
+	// Temporary boost factor to make environment effect visible
+	// Map mu_local from [0, 1] into [0.5, 1.5] factor
+	float mu_factor = 0.5 + 1.0 * clamp(mu_local, 0.0, 1.0);
+	
+	// Output velocity with mu_factor boost
+	vec2 v = gradient * gradient_strength * mu_factor;
 	if (repulsion_strength > 0.0) {
 		v += repulsion * repulsion_strength;
 	}
 	
-	velocities[index] = v;
+	velocities[i] = v;
 }
 

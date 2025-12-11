@@ -214,9 +214,14 @@ func _upload_mu_locals():
 
 		var m_norm: float = 0.0
 		if environment_field:
-			m_norm = environment_field.sample(pos)
+			m_norm = environment_field.sample(pos)  # ~[-1, 1]
 
+		# map noise to [-1, 1] (already), then scale by mu_range
 		var mu_val: float = mu_base + mu_range * m_norm
+
+		# keep mu in a sane range
+		mu_val = clamp(mu_val, 0.0, 1.0)
+
 		mu_data[i] = mu_val
 	
 	var mu_bytes: PackedByteArray = mu_data.to_byte_array()
