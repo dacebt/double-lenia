@@ -189,26 +189,26 @@ func _create_buffers() -> void:
 		push_error("Uniform buffer is not valid")
 		return
 	
-		var pos_uniform := RDUniform.new()
-		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		pos_uniform.binding = 0
-		pos_uniform.add_id(position_buffer)
-		
-		var vel_uniform := RDUniform.new()
-		vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		vel_uniform.binding = 1
-		vel_uniform.add_id(velocity_buffer)
-		
-		var mu_uniform := RDUniform.new()
-		mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		mu_uniform.binding = 2
-		mu_uniform.add_id(mu_buffer)
-		
-		var params_uniform := RDUniform.new()
-		params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-		params_uniform.binding = 3
-		params_uniform.add_id(uniform_buffer)
-		
+	var pos_uniform := RDUniform.new()
+	pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	pos_uniform.binding = 0
+	pos_uniform.add_id(position_buffer)
+	
+	var vel_uniform := RDUniform.new()
+	vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	vel_uniform.binding = 1
+	vel_uniform.add_id(velocity_buffer)
+	
+	var mu_uniform := RDUniform.new()
+	mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	mu_uniform.binding = 2
+	mu_uniform.add_id(mu_buffer)
+	
+	var params_uniform := RDUniform.new()
+	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
+	params_uniform.binding = 3
+	params_uniform.add_id(uniform_buffer)
+	
 	uniform_sets[0] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform], shader, 0)
 	if not uniform_sets[0].is_valid():
 		push_error("Failed to create uniform set")
@@ -238,27 +238,27 @@ func _update_buffers() -> void:
 	# Recreate uniform set with updated particle buffers
 	if uniform_sets[0].is_valid():
 		rd.free_rid(uniform_sets[0])
-		
-		var pos_uniform := RDUniform.new()
-		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		pos_uniform.binding = 0
-		pos_uniform.add_id(position_buffer)
-		
-		var vel_uniform := RDUniform.new()
-		vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		vel_uniform.binding = 1
-		vel_uniform.add_id(velocity_buffer)
-		
-		var mu_uniform := RDUniform.new()
-		mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		mu_uniform.binding = 2
-		mu_uniform.add_id(mu_buffer)
-		
-		var params_uniform := RDUniform.new()
-		params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-		params_uniform.binding = 3
-		params_uniform.add_id(uniform_buffer)
-		
+	
+	var pos_uniform := RDUniform.new()
+	pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	pos_uniform.binding = 0
+	pos_uniform.add_id(position_buffer)
+	
+	var vel_uniform := RDUniform.new()
+	vel_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	vel_uniform.binding = 1
+	vel_uniform.add_id(velocity_buffer)
+	
+	var mu_uniform := RDUniform.new()
+	mu_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	mu_uniform.binding = 2
+	mu_uniform.add_id(mu_buffer)
+	
+	var params_uniform := RDUniform.new()
+	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
+	params_uniform.binding = 3
+	params_uniform.add_id(uniform_buffer)
+	
 	uniform_sets[0] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform], shader, 0)
 
 func spawn_particles() -> void:
@@ -424,13 +424,13 @@ func _process(delta: float) -> void:
 	
 	# Authoritative run loop (coupled mode):
 	# 1. Particle compute step (particle Lenia primary)
-		_upload_positions()
-		_upload_mu_locals()
-		_dispatch_compute(delta)
-		
-		# Read results and move particles
-		_read_velocities()
-		_update_particles(delta)
+	_upload_positions()
+	_upload_mu_locals()
+	_dispatch_compute(delta)
+	
+	# Read results and move particles
+	_read_velocities()
+	_update_particles(delta)
 	
 	# 2. Particles → field deposit (dominant coupling)
 	if environment_field:

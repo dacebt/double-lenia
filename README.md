@@ -1,64 +1,116 @@
----
+# Double Lenia (Godot)
 
-# Particle Lenia (Godot)
-
-A GPU-accelerated particle-based life simulation built in Godot 4, born from curiosity about cellular automata.
+A GPU-accelerated **two-system Lenia** simulation in Godot 4: **particles evolve via Lenia growth in continuous particle-space** (the primary driver), **a 2D grid field evolves via Lenia growth**, and the two are **weakly, asymmetrically coupled**—particles shape the field strongly; the field influences particles only slightly.
 
 ## How this happened
 
-I was exploring Conway's Game of Life → fell into Lenia → and got stuck on a question:
+Started at Conway’s Game of Life → followed the trail into Lenia → and kept poking one question:
 
-*"Why does Lenia use a donut-shaped kernel?"*
+*"Why is the kernel a donut?"*
 
-The donut excludes the cell itself from its own field calculation. It felt like a leftover from Conway's "count your neighbors" logic. What if we just used a full Gaussian field instead? Something more like physics — fields that extend everywhere, no arbitrary holes.
+That turned into a particle variant (continuous space, discrete agents), and eventually into the current form: **two Lenia systems running at once**, each doing “Lenia things” in its own domain, with a deliberately constrained coupling between them.
 
-Turns out this leads to **Particle Lenia**, a variant where discrete particles move through continuous space, each emitting overlapping fields. I didn't know this existed when I started asking the question — I arrived at it by poking at assumptions.
+## What this is
 
-## What emerged
+**Two coupled Lenia systems:**
 
-[Particle-Lenia Presets](./patterns/README.md)
+- **Particle Lenia-like system (primary driver):** particles compute a Lenia neighborhood value in particle-space and move according to the **Lenia growth gradient** (ring-kernel + growth function), with repulsion as a stabilizer.
+- **Field Lenia (grid):** a 2D field evolves on a grid via Lenia convolution + growth.
+- **Coupling is weak + asymmetric:**
+  - **Particles → Field (dominant):** particles **deposit** into the field (Gaussian splats).
+  - **Field → Particles (weak):** field samples **modulate particle μ locally** (`mu_locals`) by a small amount. With `mu_range = 0`, the field does not influence particles.
 
-Without programming any specific behaviors:
-- Particles self-organize into ring structures
-- Multiple distinct "organisms" form and maintain separation
-- Nested equilibrium shells appear naturally
-- Clusters merge, split, and find stable configurations
+[Patterns / parameter sets](./patterns/README.md)
 
-## The math
+## What emerges
 
-Each particle emits a Gaussian field:
+Without scripting behaviors:
+- Ring / shell structures
+- Multiple distinct “organisms” that maintain separation
+- Nested equilibrium layers
+- Merging / splitting / settling into stable configurations
+- Field features that persist because particles continuously reinforce them
+
+## Core math (high level)
+
+### Particle-space neighborhood
+Each particle sees a neighborhood value from other particles through a ring kernel:
+
 ```
-U(x) = Σ exp(-|x - pᵢ|² / 2r²) / N
+
+U_i = (1/N) Σ K(|p_i - p_j|)
+
 ```
 
-Particles move toward regions where field density hits a "sweet spot":
-```
-G(u) = 2·exp(-(u - μ)² / 2σ²) - 1
+Growth (with local μ):
+
 ```
 
-Repulsion prevents collapse:
+G(u; μ, σ) = 2·exp(-(u - μ)² / (2σ²)) - 1
+
 ```
-R = Σ (1 - d/min_dist)² · direction
+
+Motion is driven by the analytic gradient of growth:
+
+```
+
+v_i ∝ ∇G(U_i)
+
+```
+
+Repulsion prevents collapse at short distances:
+
+```
+
+R_i = Σ (1 - d/min_dist)² · direction
+
+```
+
+### Grid field evolution
+The grid field evolves via convolution with a ring kernel and a growth function, clamped to [0, 1].
+
+### Coupling
+Particles deposit into the field:
+
+```
+
+field += deposit_amount · exp(-|x - p_i|² / (2·deposit_radius²))
+
+```
+
+Field weakly modulates particle μ:
+
+```
+
+μ_i = clamp(mu_base + mu_range · map(field(p_i)), 0, 1)
+
 ```
 
 ## Built with
 
-- **Godot 4.4** (Forward+ renderer)
-- **GPU Compute Shaders** for parallel field calculation
-- A conversation between me, Claude, and a coding agent
+- **Godot 4.x**
+- **GPU compute shaders** (particles + deposit + field evolution)
+- A conversation between me and a coding agent
 
-## What's next
+## Controls that matter
 
-This is Particle Lenia — similar to [Google Research's implementation](https://google-research.github.io/self-organising-systems/particle-lenia/). The next branch explores **wave interference**: giving particles phase values so fields can cancel, not just add. That's where this might become something new.
+### Particle (primary)
+- `particle_kernel_radius`, `particle_kernel_width` — ring kernel shape
+- `particle_sigma` — growth width
+- `gradient_strength` — Particle Lenia-like strength
+- `repulsion_strength`, `min_dist` — stabilizer terms
+- `time_scale`, `max_speed`, `velocity_smoothing` — integration/limits
 
-## Parameters
+### Field (grid Lenia)
+- `field_mu`, `field_sigma`
+- `field_kernel_radius`, `field_kernel_width`
+- `field_dt`, `field_decay`, `field_baseline`
+- `grid_resolution`
 
-Tunable in the Godot inspector:
-- `particle_count` — number of particles
-- `kernel_radius` — field influence range
-- `mu` / `sigma` — growth function sweet spot
-- `gradient_strength` / `repulsion_strength` — force multipliers
-- `time_scale` — simulation speed
+### Coupling (explicit + directional)
+- **Particles → Field:** `deposit_amount`, `deposit_radius`
+- **Field → Particles:** `mu_range` (strength), `mu_base` (center)  
+  `mu_range = 0.0` disables field → particle influence.
 
 ## License
 
