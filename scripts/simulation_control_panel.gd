@@ -9,7 +9,6 @@ extends Control
 ## - Groups must be unique in runnable scenes: exactly one "environment_field" and one "particle_system".
 ##
 ## UI → behavior mapping (authoritative):
-## - ModeSelector → `ParticleSystemGPU.simulation_mode` → gates evolve/compute/deposit/update_display.
 ## - ParticleCountSpin → `ParticleSystemGPU.particle_count` → realloc particle buffers.
 ## - ShowFieldButton → `EnvironmentField.show_field` → toggles `FieldSprite.visible`.
 ## - FieldMuSlider → `EnvironmentField.field_mu` → affects `field_evolution.glsl` + `field_to_texture.glsl` colormap.
@@ -28,6 +27,8 @@ extends Control
 ## - ParticleKernelRadiusSlider → `ParticleSystemGPU.particle_kernel_radius` → uploaded to `particle_compute.glsl`.
 ## - ParticleKernelWidthSlider → `ParticleSystemGPU.particle_kernel_width` → uploaded to `particle_compute.glsl`.
 ## - ParticleSigmaSlider → `ParticleSystemGPU.particle_sigma` → uploaded to `particle_compute.glsl`.
+## - MuBaseSlider → `ParticleSystemGPU.mu_base` → used in `_upload_mu_locals()`.
+## - MuRangeSlider → `ParticleSystemGPU.mu_range` → used in `_upload_mu_locals()` to control field influence strength.
 @export var environment_field_path: NodePath
 @export var particle_system_path: NodePath
 
@@ -45,7 +46,6 @@ var wiring_status: Label = null
 var collapse_button: Button = null
 var body_scroll: ScrollContainer = null
 var range_profile_selector: OptionButton = null
-var mode_selector: OptionButton = null
 var particle_count_spin: SpinBox = null
 var show_field_button: CheckButton = null
 var show_advanced: CheckButton = null
@@ -93,6 +93,10 @@ var particle_kernel_width_slider: HSlider = null
 var particle_kernel_width_label: Label = null
 var particle_sigma_slider: HSlider = null
 var particle_sigma_label: Label = null
+var mu_base_slider: HSlider = null
+var mu_base_label: Label = null
+var mu_range_slider: HSlider = null
+var mu_range_label: Label = null
 
 var _expanded_offset_bottom: float = 0.0
 var _collapsed_offset_bottom: float = 0.0
@@ -118,7 +122,6 @@ func _resolve_ui_nodes() -> void:
 	collapse_button = get_node_or_null("Panel/MainVBox/HeaderRow/CollapseButton")
 	body_scroll = get_node_or_null("Panel/MainVBox/BodyScroll")
 	range_profile_selector = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/RangeProfileContainer/RangeProfileSelector")
-	mode_selector = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/ModeContainer/ModeSelector")
 	particle_count_spin = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/ParticleCountContainer/ParticleCountSpin")
 	show_field_button = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/TogglesRow/ShowFieldButton")
 	show_advanced = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/TogglesRow/ShowAdvancedButton")
@@ -166,6 +169,10 @@ func _resolve_ui_nodes() -> void:
 	particle_kernel_width_label = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelWidthContainer/ParticleKernelWidthValue")
 	particle_sigma_slider = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer/ParticleSigmaSlider")
 	particle_sigma_label = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer/ParticleSigmaValue")
+	mu_base_slider = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuBaseContainer/MuBaseSlider")
+	mu_base_label = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuBaseContainer/MuBaseValue")
+	mu_range_slider = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuRangeContainer/MuRangeSlider")
+	mu_range_label = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuRangeContainer/MuRangeValue")
 
 func _check_ui_integrity() -> bool:
 	## Check that critical UI nodes exist. Returns false if UI is broken.
@@ -205,7 +212,7 @@ func _resolve_targets() -> void:
 			environment_field = n
 	if particle_system_path != NodePath():
 		var p = get_node_or_null(particle_system_path)
-		if p != null and "simulation_mode" in p:
+		if p != null and "particle_count" in p:
 			particle_system = p
 
 	# 2) Fallback wiring via unique groups (only if missing/unresolved)
@@ -224,7 +231,7 @@ func _resolve_targets() -> void:
 			push_error("Expected exactly 1 node in group 'particle_system', found %d" % ps_nodes.size())
 		else:
 			var gp = ps_nodes[0]
-			if gp != null and "simulation_mode" in gp:
+			if gp != null and "particle_count" in gp:
 				particle_system = gp
 
 func _setup_ui() -> void:
@@ -260,15 +267,6 @@ func _setup_ui() -> void:
 		# Apply initial profile
 		_apply_range_profile(RangeProfile.TUNING)
 
-	# Mode selector: configure once
-	if mode_selector != null:
-		mode_selector.clear()
-		mode_selector.add_item("Field only")      # 0
-		mode_selector.add_item("Swarm frozen")    # 1
-		mode_selector.add_item("Coupled")         # 2
-		if not mode_selector.item_selected.is_connected(_on_mode_selected):
-			mode_selector.item_selected.connect(_on_mode_selected)
-
 	# Bindings: connect signals (UI -> sim)
 	_connect_slider(field_mu_slider, _on_field_mu_changed)
 	_connect_slider(field_sigma_slider, _on_field_sigma_changed)
@@ -288,6 +286,8 @@ func _setup_ui() -> void:
 	_connect_slider(particle_kernel_radius_slider, _on_particle_kernel_radius_changed)
 	_connect_slider(particle_kernel_width_slider, _on_particle_kernel_width_changed)
 	_connect_slider(particle_sigma_slider, _on_particle_sigma_changed)
+	_connect_slider(mu_base_slider, _on_mu_base_changed)
+	_connect_slider(mu_range_slider, _on_mu_range_changed)
 
 	if show_field_button != null:
 		if not show_field_button.toggled.is_connected(_on_show_field_toggled):
@@ -306,7 +306,6 @@ func _setup_ui() -> void:
 	# Show/hide sections based on availability
 	_safe_set_visible(field_container, environment_field != null)
 	_safe_set_visible(particle_container, particle_system != null)
-	_safe_set_visible(mode_selector, particle_system != null)
 	if particle_count_spin != null:
 		particle_count_spin.editable = (particle_system != null)
 
@@ -357,8 +356,6 @@ func sync_ui_from_sim() -> void:
 			show_field_button.set_pressed_no_signal(environment_field.show_field)
 
 	if particle_system:
-		if mode_selector != null:
-			mode_selector.select(int(particle_system.get("simulation_mode")))
 		if particle_count_spin != null:
 			particle_count_spin.set_value_no_signal(int(particle_system.get("particle_count")))
 
@@ -370,6 +367,8 @@ func sync_ui_from_sim() -> void:
 		_apply_slider(particle_kernel_radius_slider, float(particle_system.get("particle_kernel_radius")), _update_particle_kernel_radius_label)
 		_apply_slider(particle_kernel_width_slider, float(particle_system.get("particle_kernel_width")), _update_particle_kernel_width_label)
 		_apply_slider(particle_sigma_slider, float(particle_system.get("particle_sigma")), _update_particle_sigma_label)
+		_apply_slider(mu_base_slider, float(particle_system.get("mu_base")), _update_mu_base_label)
+		_apply_slider(mu_range_slider, float(particle_system.get("mu_range")), _update_mu_range_label)
 
 	# deposit sliders live on EnvironmentField
 	if environment_field:
@@ -558,12 +557,22 @@ func _setup_particle_sliders():
 		particle_sigma_slider.value = particle_system.get("particle_sigma")
 		particle_sigma_slider.value_changed.connect(_on_particle_sigma_changed)
 		_update_particle_sigma_label(particle_system.get("particle_sigma"))
-
-func _on_mode_selected(index: int):
-	if not particle_system:
-		return
-	if "simulation_mode" in particle_system:
-		particle_system.set("simulation_mode", index)
+	
+	# Mu base (advanced)
+	if "mu_base" in particle_system and mu_base_slider:
+		mu_base_slider.min_value = 0.0
+		mu_base_slider.max_value = 1.0
+		mu_base_slider.value = particle_system.get("mu_base")
+		mu_base_slider.value_changed.connect(_on_mu_base_changed)
+		_update_mu_base_label(particle_system.get("mu_base"))
+	
+	# Mu range (advanced) - field influence strength
+	if "mu_range" in particle_system and mu_range_slider:
+		mu_range_slider.min_value = 0.0
+		mu_range_slider.max_value = 0.1
+		mu_range_slider.value = particle_system.get("mu_range")
+		mu_range_slider.value_changed.connect(_on_mu_range_changed)
+		_update_mu_range_label(particle_system.get("mu_range"))
 
 # Field slider handlers
 func _on_field_mu_changed(value: float):
@@ -655,6 +664,16 @@ func _on_particle_sigma_changed(value: float):
 		particle_system.set("particle_sigma", value)
 		_update_particle_sigma_label(value)
 
+func _on_mu_base_changed(value: float):
+	if particle_system and "mu_base" in particle_system:
+		particle_system.set("mu_base", value)
+		_update_mu_base_label(value)
+
+func _on_mu_range_changed(value: float):
+	if particle_system and "mu_range" in particle_system:
+		particle_system.set("mu_range", value)
+		_update_mu_range_label(value)
+
 # Label update helpers (null-safe)
 func _update_field_mu_label(value: float):
 	if field_mu_label != null:
@@ -719,6 +738,14 @@ func _update_particle_kernel_width_label(value: float):
 func _update_particle_sigma_label(value: float):
 	if particle_sigma_label != null:
 		particle_sigma_label.text = "%.3f" % value
+
+func _update_mu_base_label(value: float):
+	if mu_base_label != null:
+		mu_base_label.text = "%.3f" % value
+
+func _update_mu_range_label(value: float):
+	if mu_range_label != null:
+		mu_range_label.text = "%.3f" % value
 
 func _on_range_profile_selected(index: int) -> void:
 	_apply_range_profile(index)

@@ -3,15 +3,7 @@ extends Node2D
 const PARTICLE_RADIUS = 2.0
 const LOCAL_GROUP_SIZE = 64
 
-enum SimulationMode {
-	FIELD_ONLY,
-	SWARM_ON_FROZEN_FIELD,
-	COUPLED
-}
-
 @export_group("Simulation")
-## Simulation mode: FIELD_ONLY (field evolves, no particles), SWARM_ON_FROZEN_FIELD (particles on static field), COUPLED (full interaction)
-@export var simulation_mode: SimulationMode = SimulationMode.COUPLED
 
 @export_group("Particles")
 ## Number of particles in the simulation.
@@ -34,16 +26,14 @@ enum SimulationMode {
 ## Reference to the environment field that particles interact with.
 @export var environment_field: EnvironmentField = null
 
-## Base mu value for particles. Combined with environment field to set per-particle mu.
-## NOTE: Will be deprecated in Phase 3 when particles follow field gradient directly.
+## Base mu value for particle growth function peak. Centered mu value when field = 0.5.
 @export var mu_base: float = 0.04
 
-## Range of mu variation from environment field. mu = mu_base ± mu_range.
-## NOTE: Will be deprecated in Phase 3.
-@export var mu_range: float = 0.02
+## Field influence strength on particle growth. Controls how much field modulates per-particle mu values. Higher = stronger field influence. Set to 0 for no field coupling.
+@export var mu_range: float = 0.0
 
 @export_group("Forces")
-## Strength of gradient-based movement force. Controls how strongly particles follow the field gradient.
+## Strength of particle Lenia gradient. Controls how strongly particles form Lenia structures (rings/blobs).
 @export var gradient_strength: float = 100.0
 
 ## Strength of particle repulsion force. Prevents particles from clustering too closely.
@@ -64,10 +54,8 @@ var pipeline: RID
 var position_buffer: RID
 var velocity_buffer: RID
 var mu_buffer: RID
-var field_buffer: RID  # Placeholder only if environment buffers unavailable
 var uniform_buffer: RID
-var uniform_sets: Array[RID] = [RID(), RID()]  # Two sets, one per field buffer
-var current_field_index: int = 0
+var uniform_sets: Array[RID] = [RID()]  # Single uniform set (no field buffer dependency)
 
 var particles: Array[Particle] = []
 var positions_data: PackedFloat32Array
@@ -178,13 +166,6 @@ func _create_buffers() -> void:
 		push_error("Failed to create mu buffer")
 		return
 	
-	# Create field buffer (read-only, will be resized when field is available)
-	# Initial size: 4 bytes (1 float) as placeholder, will be resized in _upload_field() when environment_field is set
-	field_buffer = rd.storage_buffer_create(4)
-	if not field_buffer.is_valid():
-		push_error("Failed to create field buffer")
-		return
-	
 	# Create uniform buffer (48 bytes = 12 floats for std140 alignment)
 	var uniform_data = PackedByteArray()
 	uniform_data.resize(48)  # 12 floats * 4 bytes
@@ -193,8 +174,7 @@ func _create_buffers() -> void:
 		push_error("Failed to create uniform buffer")
 		return
 	
-	# Create two uniform sets, one for each field buffer (ping-pong)
-	# This avoids recreating uniform sets every frame
+	# Create uniform set
 	# Validate all buffers before creating uniform sets
 	if not position_buffer.is_valid():
 		push_error("Position buffer is not valid")
@@ -209,7 +189,6 @@ func _create_buffers() -> void:
 		push_error("Uniform buffer is not valid")
 		return
 	
-	for buffer_index in range(2):
 		var pos_uniform := RDUniform.new()
 		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
 		pos_uniform.binding = 0
@@ -230,32 +209,9 @@ func _create_buffers() -> void:
 		params_uniform.binding = 3
 		params_uniform.add_id(uniform_buffer)
 		
-		# Get field buffer directly from environment (no copy needed)
-		var field_buffer_rid: RID = RID()
-		
-		# Try to get field buffer from environment
-		if environment_field and environment_field.has_method("get_field_buffer"):
-			field_buffer_rid = environment_field.get_field_buffer(buffer_index)
-		
-		# Fallback to placeholder if field buffer not available
-			if not field_buffer_rid.is_valid():
-				push_warning("Environment field buffer %d not ready, using placeholder" % buffer_index)
-				if not field_buffer.is_valid():
-					field_buffer = rd.storage_buffer_create(4)  # Minimal placeholder
-				field_buffer_rid = field_buffer
-		
-		if not field_buffer_rid.is_valid():
-			push_error("Field buffer RID %d is not valid" % buffer_index)
-			continue
-		
-		var field_uniform := RDUniform.new()
-		field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		field_uniform.binding = 4
-		field_uniform.add_id(field_buffer_rid)
-		
-		uniform_sets[buffer_index] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
-		if not uniform_sets[buffer_index].is_valid():
-			push_error("Failed to create uniform set %d" % buffer_index)
+	uniform_sets[0] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform], shader, 0)
+	if not uniform_sets[0].is_valid():
+		push_error("Failed to create uniform set")
 
 func _update_buffers() -> void:
 	# Resize buffers if particle count changed
@@ -279,20 +235,9 @@ func _update_buffers() -> void:
 	velocity_buffer = rd.storage_buffer_create(buffer_size)
 	mu_buffer = rd.storage_buffer_create(mu_buffer_size)
 	
-	# Field buffer is now accessed directly from environment_field (no local copy needed)
-	# Recreate both uniform sets with updated particle buffers
-	for buffer_index in range(2):
-		if uniform_sets[buffer_index].is_valid():
-			rd.free_rid(uniform_sets[buffer_index])
-		
-		var field_buffer_rid: RID = RID()
-		if environment_field and environment_field.has_method("get_field_buffer"):
-			field_buffer_rid = environment_field.get_field_buffer(buffer_index)
-		
-			if not field_buffer_rid.is_valid():
-				if not field_buffer.is_valid():
-					field_buffer = rd.storage_buffer_create(4)
-				field_buffer_rid = field_buffer
+	# Recreate uniform set with updated particle buffers
+	if uniform_sets[0].is_valid():
+		rd.free_rid(uniform_sets[0])
 		
 		var pos_uniform := RDUniform.new()
 		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
@@ -314,12 +259,7 @@ func _update_buffers() -> void:
 		params_uniform.binding = 3
 		params_uniform.add_id(uniform_buffer)
 		
-		var field_uniform := RDUniform.new()
-		field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		field_uniform.binding = 4
-		field_uniform.add_id(field_buffer_rid)
-		
-		uniform_sets[buffer_index] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
+	uniform_sets[0] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform], shader, 0)
 
 func spawn_particles() -> void:
 	particles.clear()
@@ -349,9 +289,12 @@ func _upload_mu_locals() -> void:
 
 		var m_norm: float = 0.0
 		if environment_field:
-			m_norm = environment_field.sample(pos)  # ~[-1, 1]
+			var sample: float = environment_field.sample(pos)  # [0, 1] from field
+			# Convert to centered range: sample is [0,1], convert to [-1,1]
+			m_norm = (sample - 0.5) * 2.0
 
-		# map noise to [-1, 1] (already), then scale by mu_range
+		# Apply weak field influence: mu_val = mu_base + mu_range * m_norm
+		# where m_norm is now correctly in [-1, 1]
 		var mu_val: float = mu_base + mu_range * m_norm
 
 		# keep mu in a sane range
@@ -367,9 +310,6 @@ func _upload_uniforms(_delta: float) -> void:
 	var uniform_bytes = uniform_bytes_buffer
 	
 	var viewport_size: Vector2 = _get_sim_viewport_size()
-	var field_grid_size: float = 0.0
-	if environment_field:
-		field_grid_size = float(environment_field.grid_resolution)
 	
 	var offset = 0
 	uniform_bytes.encode_float(offset, float(particle_count))
@@ -391,13 +331,13 @@ func _upload_uniforms(_delta: float) -> void:
 	# We repurpose this slot (previously delta_time) for GPU-side velocity smoothing (inertia).
 	uniform_bytes.encode_float(offset, clamp(velocity_smoothing, 0.0, 1.0))
 	offset += 4
-	uniform_bytes.encode_float(offset, field_grid_size)
-	offset += 4
 	uniform_bytes.encode_float(offset, viewport_size.x)
 	offset += 4
 	uniform_bytes.encode_float(offset, viewport_size.y)
 	offset += 4
-	# Padding for std140 alignment (12th float)
+	# Padding for std140 alignment (11th and 12th floats)
+	uniform_bytes.encode_float(offset, 0.0)
+	offset += 4
 	uniform_bytes.encode_float(offset, 0.0)
 	
 	rd.buffer_update(uniform_buffer, 0, uniform_bytes.size(), uniform_bytes)
@@ -411,7 +351,7 @@ func _dispatch_compute(delta: float) -> void:
 	# Begin compute list
 	var compute_list = rd.compute_list_begin()
 	rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
-	rd.compute_list_bind_uniform_set(compute_list, uniform_sets[current_field_index], 0)
+	rd.compute_list_bind_uniform_set(compute_list, uniform_sets[0], 0)
 	rd.compute_list_dispatch(compute_list, workgroups, 1, 1)
 	rd.compute_list_end()
 	
@@ -482,15 +422,8 @@ func _process(delta: float) -> void:
 		spawn_particles()
 		_update_buffers()
 	
-	# 1. Evolve field first (GPU evolution) - enabled in FIELD_ONLY and COUPLED
-	if environment_field and (simulation_mode == SimulationMode.FIELD_ONLY or simulation_mode == SimulationMode.COUPLED):
-		environment_field.evolve(delta)
-		# Update field index to match environment's current buffer
-		current_field_index = environment_field.current_buffer
-	
-	# 2. Particle compute/movement - enabled in SWARM_ON_FROZEN_FIELD and COUPLED
-	if simulation_mode == SimulationMode.SWARM_ON_FROZEN_FIELD or simulation_mode == SimulationMode.COUPLED:
-		# Upload particle data and dispatch compute
+	# Authoritative run loop (coupled mode):
+	# 1. Particle compute step (particle Lenia primary)
 		_upload_positions()
 		_upload_mu_locals()
 		_dispatch_compute(delta)
@@ -499,12 +432,15 @@ func _process(delta: float) -> void:
 		_read_velocities()
 		_update_particles(delta)
 	
-	# 3. GPU deposits (no CPU sync) - enabled only in COUPLED
-	if environment_field and simulation_mode == SimulationMode.COUPLED:
+	# 2. Particles → field deposit (dominant coupling)
+	if environment_field:
 		environment_field.deposit_particles_gpu(position_buffer, particle_count, _get_sim_viewport_size())
 	
-	# 6. Update visualization occasionally (minimal CPU sync only for display)
-	# Always update if field exists and should be shown (works in all modes including SWARM_ON_FROZEN_FIELD)
+	# 3. Field evolution step (Lenia on grid)
+	if environment_field:
+		environment_field.evolve(delta)
+	
+	# 4. Update visualization occasionally (minimal CPU sync only for display)
 	if environment_field and environment_field.show_field:
 		if Engine.get_process_frames() % environment_field.vis_update_interval == 0:
 			environment_field.update_display()
@@ -513,13 +449,10 @@ func _process(delta: float) -> void:
 
 func _exit_tree() -> void:
 	# Cleanup
-	for i in range(uniform_sets.size()):
-		if uniform_sets[i].is_valid():
-			rd.free_rid(uniform_sets[i])
+	if uniform_sets[0].is_valid():
+		rd.free_rid(uniform_sets[0])
 	if uniform_buffer.is_valid():
 		rd.free_rid(uniform_buffer)
-	if field_buffer.is_valid():
-		rd.free_rid(field_buffer)
 	if mu_buffer.is_valid():
 		rd.free_rid(mu_buffer)
 	if velocity_buffer.is_valid():
