@@ -2,6 +2,6 @@
 
 [ext_resource type="Script" path="res://scripts/environment_field.gd" id="1_0"]
 
-[node name="EnvironmentField" type="Node2D"]
+[node name="EnvironmentField" type="Node2D" groups=["environment_field"]]
 script = ExtResource("1_0")
 

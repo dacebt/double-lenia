@@ -76,10 +76,7 @@ var vis_texture: ImageTexture  # Godot texture wrapper
 var vis_texture_uniform_set: RID
 var vis_texture_uniform_buffer: RID
 var vis_last_buffer_index: int = -1  # Track last buffer index to avoid recreating uniform set
-var vis_canvas_layer: CanvasLayer
-var vis_control: Control
-var vis_rect: TextureRect
-var vis_material: ShaderMaterial
+var field_sprite: Sprite2D
 
 # GPU deposit resources
 var deposit_shader: RID
@@ -110,11 +107,17 @@ func initialize_gpu(rendering_device: RenderingDevice) -> void:
 		uniform_bytes_buffer.resize(32)  # Field evolution uniforms
 		deposit_uniform_bytes_buffer.resize(32)  # Deposit uniforms
 		vis_uniform_bytes_buffer.resize(8)  # Visualization uniforms
+		# Ensure visualization exists after we're in-tree (viewport size non-zero)
+		if show_field:
+			call_deferred("_ensure_visualization_ready")
 	else:
 		push_error("No RenderingDevice provided")
 		_generate_field()  # Fallback to CPU-only mode
-	
+
+func _ensure_visualization_ready() -> void:
+	# Must be safe to call multiple times.
 	_setup_visualization()
+	_apply_show_field_visibility()
 
 func _generate_field() -> void:
 	# Generate initial field with multiple Gaussian blob seeds (CPU fallback)
@@ -406,6 +409,12 @@ func update_display() -> void:
 	## Called occasionally, not every frame.
 	if not show_field or not use_gpu:
 		return
+	# Ensure visualization exists
+	if field_sprite == null or vis_texture == null:
+		_setup_visualization()
+	_apply_show_field_visibility()
+	if field_sprite == null or vis_texture == null:
+		return
 	_update_visualization()
 
 func _read_field_to_cpu():
@@ -649,7 +658,7 @@ func get_environment_color(world_pos: Vector2) -> Color:
 	if values.is_empty():
 		return Color.WHITE
 	
-	var vp_size: Vector2 = get_viewport().get_visible_rect().size
+	var vp_size: Vector2 = get_viewport_rect().size
 	
 	var u: float = clamp(world_pos.x / vp_size.x, 0.0, 1.0)
 	var v: float = clamp(world_pos.y / vp_size.y, 0.0, 1.0)
@@ -712,7 +721,9 @@ func _setup_visualization() -> void:
 	
 	_setup_texture_shader()
 	_create_texture()
-	_setup_texture_rect()
+	_setup_field_sprite()
+	_update_field_sprite_scale()
+	_apply_show_field_visibility()
 
 func _setup_texture_shader() -> void:
 	## Load and compile field-to-texture compute shader.
@@ -801,50 +812,42 @@ func _create_texture() -> void:
 		push_error("Failed to create texture uniform set")
 		return
 
-func _setup_texture_rect() -> void:
-	## Create TextureRect for displaying field visualization.
-	
-	# Create CanvasLayer to hold UI elements
-	vis_canvas_layer = CanvasLayer.new()
-	vis_canvas_layer.layer = -100  # Behind everything
-	add_child(vis_canvas_layer)
-	
-	# Create Control container
-	vis_control = Control.new()
-	vis_control.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vis_canvas_layer.add_child(vis_control)
-	
-	# Load canvas shader for display
-	var render_shader = load("res://shaders/field_render.gdshader")
-	if render_shader:
-		vis_material = ShaderMaterial.new()
-		vis_material.shader = render_shader
-		vis_material.set_shader_parameter("field_texture", vis_texture)
-		vis_material.set_shader_parameter("field_mu", field_mu)
-	
-	# Create TextureRect that fills viewport
-	vis_rect = TextureRect.new()
-	vis_rect.texture = vis_texture
-	if vis_material:
-		vis_rect.material = vis_material
-	vis_rect.stretch_mode = TextureRect.STRETCH_SCALE
-	vis_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vis_control.add_child(vis_rect)
-	
-	# Handle resize
-	if get_viewport():
+func _setup_field_sprite() -> void:
+	## Create Sprite2D for displaying field visualization in world-space.
+	if vis_texture == null:
+		return
+	if field_sprite == null:
+		field_sprite = Sprite2D.new()
+		field_sprite.name = "FieldSprite"
+		field_sprite.centered = false
+		field_sprite.position = Vector2.ZERO
+		field_sprite.z_index = -100
+		add_child(field_sprite)
+
+	field_sprite.texture = vis_texture
+
+	# Handle resize (once)
+	if get_viewport() and not get_viewport().size_changed.is_connected(_on_viewport_resize):
 		get_viewport().size_changed.connect(_on_viewport_resize)
-		_on_viewport_resize()
 
 func _on_viewport_resize() -> void:
-	## Handle viewport resize for visualization.
-	if not vis_control:
+	## Handle viewport resize for visualization scaling.
+	_update_field_sprite_scale()
+
+func _update_field_sprite_scale() -> void:
+	if field_sprite == null or vis_texture == null:
 		return
-	if not get_viewport():
+	var vp_size: Vector2 = get_viewport_rect().size
+	if vp_size.x <= 0.0 or vp_size.y <= 0.0:
 		return
-	var vp_size = get_viewport_rect().size
-	vis_control.size = vp_size
-	vis_control.position = Vector2.ZERO
+	var tex_size: Vector2 = vis_texture.get_size()
+	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+		return
+	field_sprite.scale = Vector2(vp_size.x / tex_size.x, vp_size.y / tex_size.y)
+
+func _apply_show_field_visibility() -> void:
+	if field_sprite != null:
+		field_sprite.visible = show_field
 
 func _update_visualization() -> void:
 	## Update visualization texture from GPU field buffer (GPU-only, no CPU sync).
@@ -906,6 +909,9 @@ func _sync_texture_to_display() -> void:
 	if image_data.size() > 0:
 		var image = Image.create_from_data(grid_resolution, grid_resolution, false, Image.FORMAT_RGBA8, image_data)
 		vis_texture.update(image)
+		if field_sprite != null:
+			field_sprite.texture = vis_texture
+			_update_field_sprite_scale()
 
 func _exit_tree():
 	# Cleanup GPU resources

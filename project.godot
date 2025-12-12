@@ -14,3 +14,10 @@ config/name="game_of_life"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
+
+[display]
+
+window/size/resizable=true
+window/size/mode=2
+window/stretch/mode="viewport"
+window/stretch/aspect="expand"

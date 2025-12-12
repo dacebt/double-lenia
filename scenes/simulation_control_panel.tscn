@@ -10,47 +10,29 @@ border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.4, 0.4, 0.4, 1)
 
-[node name="SimulationControlPanel" type="CanvasLayer"]
-layer = 100
-script = ExtResource("1_0")
-
-[node name="Control" type="Control" parent="."]
-layout_mode = 3
+[node name="SimulationControlPanel" type="Control"]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 0
+script = ExtResource("1_0")
 
-[node name="OpenButton" type="Button" parent="Control"]
-layout_mode = 3
-anchors_preset = 0
-anchor_left = 0.0
-anchor_top = 0.0
-anchor_right = 0.0
-anchor_bottom = 0.0
-offset_left = 10.0
-offset_top = 10.0
-offset_right = 130.0
-offset_bottom = 42.0
-text = "Controls ▸"
-visible = false
-
-[node name="Panel" type="Panel" parent="Control"]
-layout_mode = 3
-anchors_preset = 0
-anchor_left = 0.0
-anchor_right = 0.0
-anchor_top = 0.0
-anchor_bottom = 0.0
-offset_left = 10.0
-offset_top = 10.0
-offset_right = 370.0
-offset_bottom = 530.0
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+grow_horizontal = 2
+grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_1")
 
-[node name="MainVBox" type="VBoxContainer" parent="Control/Panel"]
+[node name="MainVBox" type="VBoxContainer" parent="Panel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -61,393 +43,389 @@ offset_right = -8.0
 offset_bottom = -8.0
 theme_override_constants/separation = 6
 
-[node name="HeaderRow" type="HBoxContainer" parent="Control/Panel/MainVBox"]
+[node name="HeaderRow" type="HBoxContainer" parent="Panel/MainVBox"]
 layout_mode = 2
 
-[node name="HeaderTitle" type="Label" parent="Control/Panel/MainVBox/HeaderRow"]
+[node name="HeaderTitle" type="Label" parent="Panel/MainVBox/HeaderRow"]
 layout_mode = 2
 text = "Controls"
 
-[node name="WiringStatus" type="Label" parent="Control/Panel/MainVBox/HeaderRow"]
+[node name="WiringStatus" type="Label" parent="Panel/MainVBox/HeaderRow"]
 layout_mode = 2
 text = "Not wired"
 
-[node name="HeaderSpacer" type="Control" parent="Control/Panel/MainVBox/HeaderRow"]
+[node name="HeaderSpacer" type="Control" parent="Panel/MainVBox/HeaderRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="CollapseButton" type="Button" parent="Control/Panel/MainVBox/HeaderRow"]
+[node name="CollapseButton" type="Button" parent="Panel/MainVBox/HeaderRow"]
 layout_mode = 2
 text = "▾"
 
-[node name="CloseButton" type="Button" parent="Control/Panel/MainVBox/HeaderRow"]
-layout_mode = 2
-text = "✕"
-
-[node name="BodyScroll" type="ScrollContainer" parent="Control/Panel/MainVBox"]
+[node name="BodyScroll" type="ScrollContainer" parent="Panel/MainVBox"]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="BodyVBox" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll"]
+[node name="BodyVBox" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
-[node name="ModeContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="ModeContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="ModeLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ModeContainer"]
+[node name="ModeLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ModeContainer"]
 layout_mode = 2
 text = "mode:"
 
-[node name="ModeSelector" type="OptionButton" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ModeContainer"]
+[node name="ModeSelector" type="OptionButton" parent="Panel/MainVBox/BodyScroll/BodyVBox/ModeContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="ParticleCountContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="ParticleCountContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="ParticleCountLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleCountContainer"]
+[node name="ParticleCountLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleCountContainer"]
 layout_mode = 2
 text = "particles:"
 
-[node name="ParticleCountSpin" type="SpinBox" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleCountContainer"]
+[node name="ParticleCountSpin" type="SpinBox" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleCountContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0
 max_value = 20000
 step = 1
 
-[node name="TogglesRow" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="TogglesRow" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="ShowFieldButton" type="CheckButton" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/TogglesRow"]
+[node name="ShowFieldButton" type="CheckButton" parent="Panel/MainVBox/BodyScroll/BodyVBox/TogglesRow"]
 layout_mode = 2
 text = "Show field"
 
-[node name="ShowAdvancedButton" type="CheckButton" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/TogglesRow"]
+[node name="ShowAdvancedButton" type="CheckButton" parent="Panel/MainVBox/BodyScroll/BodyVBox/TogglesRow"]
 layout_mode = 2
 text = "Show advanced"
 
-[node name="HSeparatorTop" type="HSeparator" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="HSeparatorTop" type="HSeparator" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="FieldLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="FieldLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 text = "Field"
 
-[node name="FieldContainer" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="FieldContainer" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="FieldBasic" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer"]
+[node name="FieldBasic" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer"]
 layout_mode = 2
 
-[node name="FieldMuContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
+[node name="FieldMuContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
 layout_mode = 2
 
-[node name="FieldMuLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldMuContainer"]
+[node name="FieldMuLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldMuContainer"]
 layout_mode = 2
 text = "μ:"
 
-[node name="FieldMuSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldMuContainer"]
+[node name="FieldMuSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldMuContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 1.0
 step = 0.001
 
-[node name="FieldMuValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldMuContainer"]
+[node name="FieldMuValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldMuContainer"]
 layout_mode = 2
 text = "0.000"
 
-[node name="FieldSigmaContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
+[node name="FieldSigmaContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
 layout_mode = 2
 
-[node name="FieldSigmaLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldSigmaContainer"]
+[node name="FieldSigmaLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldSigmaContainer"]
 layout_mode = 2
 text = "σ:"
 
-[node name="FieldSigmaSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldSigmaContainer"]
+[node name="FieldSigmaSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldSigmaContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.01
 max_value = 0.5
 step = 0.001
 
-[node name="FieldSigmaValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldSigmaContainer"]
+[node name="FieldSigmaValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldSigmaContainer"]
 layout_mode = 2
 text = "0.000"
 
-[node name="FieldDtContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
+[node name="FieldDtContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
 layout_mode = 2
 
-[node name="FieldDtLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDtContainer"]
+[node name="FieldDtLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDtContainer"]
 layout_mode = 2
 text = "dt:"
 
-[node name="FieldDtSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDtContainer"]
+[node name="FieldDtSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDtContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 0.1
 step = 0.001
 
-[node name="FieldDtValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDtContainer"]
+[node name="FieldDtValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDtContainer"]
 layout_mode = 2
 text = "0.000"
 
-[node name="FieldDecayContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
+[node name="FieldDecayContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
 layout_mode = 2
 
-[node name="FieldDecayLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDecayContainer"]
+[node name="FieldDecayLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDecayContainer"]
 layout_mode = 2
 text = "decay:"
 
-[node name="FieldDecaySlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDecayContainer"]
+[node name="FieldDecaySlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDecayContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 1.0
 step = 0.001
 
-[node name="FieldDecayValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDecayContainer"]
+[node name="FieldDecayValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldDecayContainer"]
 layout_mode = 2
 text = "0.000"
 
-[node name="FieldBaselineContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
+[node name="FieldBaselineContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic"]
 layout_mode = 2
 
-[node name="FieldBaselineLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldBaselineContainer"]
+[node name="FieldBaselineLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldBaselineContainer"]
 layout_mode = 2
 text = "baseline:"
 
-[node name="FieldBaselineSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldBaselineContainer"]
+[node name="FieldBaselineSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldBaselineContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = -1.0
 max_value = 1.0
 step = 0.001
 
-[node name="FieldBaselineValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldBaselineContainer"]
+[node name="FieldBaselineValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/FieldContainer/FieldBasic/FieldBaselineContainer"]
 layout_mode = 2
 text = "0.000"
 
-[node name="HSeparatorMid" type="HSeparator" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="HSeparatorMid" type="HSeparator" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="ParticlesLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="ParticlesLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 text = "Particles / Coupling"
 
-[node name="ParticleContainer" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="ParticleContainer" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="ParticleBasic" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer"]
+[node name="ParticleBasic" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer"]
 layout_mode = 2
 
-[node name="GradientStrengthContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
+[node name="GradientStrengthContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
 layout_mode = 2
 
-[node name="GradientStrengthLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
+[node name="GradientStrengthLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
 layout_mode = 2
 text = "gradient:"
 
-[node name="GradientStrengthSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
+[node name="GradientStrengthSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 300.0
 step = 1.0
 
-[node name="GradientStrengthValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
+[node name="GradientStrengthValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="RepulsionStrengthContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
+[node name="RepulsionStrengthContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
 layout_mode = 2
 
-[node name="RepulsionStrengthLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
+[node name="RepulsionStrengthLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
 layout_mode = 2
 text = "repulsion:"
 
-[node name="RepulsionStrengthSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
+[node name="RepulsionStrengthSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 300.0
 step = 1.0
 
-[node name="RepulsionStrengthValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
+[node name="RepulsionStrengthValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="TimeScaleContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
+[node name="TimeScaleContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
 layout_mode = 2
 
-[node name="TimeScaleLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/TimeScaleContainer"]
+[node name="TimeScaleLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/TimeScaleContainer"]
 layout_mode = 2
 text = "time scale:"
 
-[node name="TimeScaleSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/TimeScaleContainer"]
+[node name="TimeScaleSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/TimeScaleContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 5.0
 step = 0.01
 
-[node name="TimeScaleValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/TimeScaleContainer"]
+[node name="TimeScaleValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/TimeScaleContainer"]
 layout_mode = 2
 text = "0.00"
 
-[node name="MinDistContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
+[node name="MinDistContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
 layout_mode = 2
 
-[node name="MinDistLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/MinDistContainer"]
+[node name="MinDistLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/MinDistContainer"]
 layout_mode = 2
 text = "min dist:"
 
-[node name="MinDistSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/MinDistContainer"]
+[node name="MinDistSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/MinDistContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 50.0
 step = 0.1
 
-[node name="MinDistValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/MinDistContainer"]
+[node name="MinDistValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/MinDistContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="DepositAmountContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
+[node name="DepositAmountContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
 layout_mode = 2
 
-[node name="DepositAmountLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
+[node name="DepositAmountLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
 layout_mode = 2
 text = "deposit amt:"
 
-[node name="DepositAmountSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
+[node name="DepositAmountSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 1.0
 step = 0.0001
 
-[node name="DepositAmountValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
+[node name="DepositAmountValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
 layout_mode = 2
 text = "0.0000"
 
-[node name="DepositRadiusContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
+[node name="DepositRadiusContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic"]
 layout_mode = 2
 
-[node name="DepositRadiusLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
+[node name="DepositRadiusLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
 layout_mode = 2
 text = "deposit r:"
 
-[node name="DepositRadiusSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
+[node name="DepositRadiusSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 50.0
 step = 0.1
 
-[node name="DepositRadiusValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
+[node name="DepositRadiusValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="AdvancedContainer" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox"]
+[node name="AdvancedContainer" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
-[node name="FieldAdvanced" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer"]
+[node name="FieldAdvanced" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer"]
 layout_mode = 2
 
-[node name="FieldKernelRadiusContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced"]
+[node name="FieldKernelRadiusContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced"]
 layout_mode = 2
 
-[node name="FieldKernelRadiusLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelRadiusContainer"]
+[node name="FieldKernelRadiusLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelRadiusContainer"]
 layout_mode = 2
 text = "kernel r:"
 
-[node name="FieldKernelRadiusSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelRadiusContainer"]
+[node name="FieldKernelRadiusSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelRadiusContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 1.0
 max_value = 50.0
 step = 0.1
 
-[node name="FieldKernelRadiusValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelRadiusContainer"]
+[node name="FieldKernelRadiusValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelRadiusContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="FieldKernelWidthContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced"]
+[node name="FieldKernelWidthContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced"]
 layout_mode = 2
 
-[node name="FieldKernelWidthLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelWidthContainer"]
+[node name="FieldKernelWidthLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelWidthContainer"]
 layout_mode = 2
 text = "kernel w:"
 
-[node name="FieldKernelWidthSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelWidthContainer"]
+[node name="FieldKernelWidthSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelWidthContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.5
 max_value = 20.0
 step = 0.1
 
-[node name="FieldKernelWidthValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelWidthContainer"]
+[node name="FieldKernelWidthValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/FieldAdvanced/FieldKernelWidthContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="ParticleAdvanced" type="VBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer"]
+[node name="ParticleAdvanced" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer"]
 layout_mode = 2
 
-[node name="ParticleKernelRadiusContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
+[node name="ParticleKernelRadiusContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
 layout_mode = 2
 
-[node name="ParticleKernelRadiusLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelRadiusContainer"]
+[node name="ParticleKernelRadiusLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelRadiusContainer"]
 layout_mode = 2
 text = "part kernel r:"
 
-[node name="ParticleKernelRadiusSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelRadiusContainer"]
+[node name="ParticleKernelRadiusSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelRadiusContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 1.0
 max_value = 500.0
 step = 1.0
 
-[node name="ParticleKernelRadiusValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelRadiusContainer"]
+[node name="ParticleKernelRadiusValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelRadiusContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="ParticleKernelWidthContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
+[node name="ParticleKernelWidthContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
 layout_mode = 2
 
-[node name="ParticleKernelWidthLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelWidthContainer"]
+[node name="ParticleKernelWidthLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelWidthContainer"]
 layout_mode = 2
 text = "part kernel w:"
 
-[node name="ParticleKernelWidthSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelWidthContainer"]
+[node name="ParticleKernelWidthSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelWidthContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 1.0
 max_value = 100.0
 step = 1.0
 
-[node name="ParticleKernelWidthValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelWidthContainer"]
+[node name="ParticleKernelWidthValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleKernelWidthContainer"]
 layout_mode = 2
 text = "0.0"
 
-[node name="ParticleSigmaContainer" type="HBoxContainer" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
+[node name="ParticleSigmaContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
 layout_mode = 2
 
-[node name="ParticleSigmaLabel" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer"]
+[node name="ParticleSigmaLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer"]
 layout_mode = 2
 text = "part σ:"
 
-[node name="ParticleSigmaSlider" type="HSlider" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer"]
+[node name="ParticleSigmaSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.001
 max_value = 0.2
 step = 0.001
 
-[node name="ParticleSigmaValue" type="Label" parent="Control/Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer"]
+[node name="ParticleSigmaValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer"]
 layout_mode = 2
 text = "0.000"

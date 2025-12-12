@@ -77,6 +77,12 @@ var mu_data: PackedFloat32Array
 var uniform_bytes_buffer: PackedByteArray  # Pre-allocated buffer for uniform uploads
 
 func _ready():
+	# If the exported reference wasn't set in the scene, fall back to groups.
+	if environment_field == null:
+		var gf = get_tree().get_first_node_in_group("environment_field")
+		if gf is EnvironmentField:
+			environment_field = gf
+
 	rd = RenderingServer.create_local_rendering_device()
 	if rd == null:
 		push_error("Failed to create RenderingDevice")
@@ -524,8 +530,10 @@ func _process(delta):
 		environment_field.deposit_particles_gpu(position_buffer, particle_count, get_viewport_rect().size)
 	
 	# 6. Update visualization occasionally (minimal CPU sync only for display)
-	if environment_field and Engine.get_process_frames() % environment_field.vis_update_interval == 0:
-		environment_field.update_display()
+	# Always update if field exists and should be shown (works in all modes including SWARM_ON_FROZEN_FIELD)
+	if environment_field and environment_field.show_field:
+		if Engine.get_process_frames() % environment_field.vis_update_interval == 0:
+			environment_field.update_display()
 	
 	queue_redraw()
 
