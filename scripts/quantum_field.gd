@@ -318,7 +318,7 @@ func _update_display():
 	display_texture.set_image(image)
 	
 	# Update sprite scale to fill viewport while maintaining aspect ratio
-	var viewport_size = get_viewport_rect().size
+	var viewport_size: Vector2 = _get_sim_viewport_size()
 	if viewport_size.x > 0 and viewport_size.y > 0:
 		# Use the smaller dimension to maintain square aspect
 		var scale_factor = min(viewport_size.x, viewport_size.y) / float(grid_size)
@@ -328,7 +328,7 @@ func _update_display():
 	# Update shader material to use the texture
 	display_material.set_shader_parameter("wave_texture", display_texture)
 
-func _process(delta: float):
+func _process(delta: float) -> void:
 	if not rd:
 		return
 	if not shader.is_valid():
@@ -343,7 +343,7 @@ func _process(delta: float):
 	
 	_update_display()
 
-func _exit_tree():
+func _exit_tree() -> void:
 	# Cleanup all RIDs
 	if uniform_sets.size() > 0:
 		for i in range(2):
@@ -358,6 +358,14 @@ func _exit_tree():
 	
 	if uniform_buffer.is_valid():
 		rd.free_rid(uniform_buffer)
+
+func _get_sim_viewport_size() -> Vector2:
+	## Source of truth for simulation size under SubViewport.
+	var vp := get_viewport()
+	if vp == null:
+		return Vector2.ZERO
+	var s: Vector2i = vp.size
+	return Vector2(float(s.x), float(s.y))
 	
 	if pipeline.is_valid():
 		rd.free_rid(pipeline)

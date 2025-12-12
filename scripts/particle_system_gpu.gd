@@ -64,8 +64,7 @@ var pipeline: RID
 var position_buffer: RID
 var velocity_buffer: RID
 var mu_buffer: RID
-var field_buffer: RID
-var field_buffer_size: int = 0  # Track field buffer size (buffer_get_size doesn't exist in Godot 4.4)
+var field_buffer: RID  # Placeholder only if environment buffers unavailable
 var uniform_buffer: RID
 var uniform_sets: Array[RID] = [RID(), RID()]  # Two sets, one per field buffer
 var current_field_index: int = 0
@@ -76,7 +75,7 @@ var velocities_data: PackedFloat32Array
 var mu_data: PackedFloat32Array
 var uniform_bytes_buffer: PackedByteArray  # Pre-allocated buffer for uniform uploads
 
-func _ready():
+func _ready() -> void:
 	# If the exported reference wasn't set in the scene, fall back to groups.
 	if environment_field == null:
 		var gf = get_tree().get_first_node_in_group("environment_field")
@@ -98,10 +97,10 @@ func _ready():
 	# Defer buffer creation to ensure environment_field is ready
 	call_deferred("_deferred_init")
 
-func _deferred_init():
+func _deferred_init() -> void:
 	_update_buffers()
 
-func _setup_compute_shader():
+func _setup_compute_shader() -> void:
 	# Load shader file as text
 	var shader_file := FileAccess.open("res://shaders/particle_compute.glsl", FileAccess.READ)
 	if shader_file == null:
@@ -145,7 +144,7 @@ func _setup_compute_shader():
 	# Pre-allocate uniform buffer (48 bytes = 12 floats for std140 alignment)
 	uniform_bytes_buffer.resize(48)
 
-func _create_buffers():
+func _create_buffers() -> void:
 	# Calculate buffer sizes
 	var vec2_size = 2 * 4  # 2 floats * 4 bytes each
 	var buffer_size = particle_count * vec2_size
@@ -176,7 +175,6 @@ func _create_buffers():
 	# Create field buffer (read-only, will be resized when field is available)
 	# Initial size: 4 bytes (1 float) as placeholder, will be resized in _upload_field() when environment_field is set
 	field_buffer = rd.storage_buffer_create(4)
-	field_buffer_size = 4
 	if not field_buffer.is_valid():
 		push_error("Failed to create field buffer")
 		return
@@ -234,12 +232,11 @@ func _create_buffers():
 			field_buffer_rid = environment_field.get_field_buffer(buffer_index)
 		
 		# Fallback to placeholder if field buffer not available
-		if not field_buffer_rid.is_valid():
-			push_warning("Environment field buffer %d not ready, using placeholder" % buffer_index)
-			if not field_buffer.is_valid():
-				field_buffer = rd.storage_buffer_create(4)  # Minimal placeholder
-				field_buffer_size = 4
-			field_buffer_rid = field_buffer
+			if not field_buffer_rid.is_valid():
+				push_warning("Environment field buffer %d not ready, using placeholder" % buffer_index)
+				if not field_buffer.is_valid():
+					field_buffer = rd.storage_buffer_create(4)  # Minimal placeholder
+				field_buffer_rid = field_buffer
 		
 		if not field_buffer_rid.is_valid():
 			push_error("Field buffer RID %d is not valid" % buffer_index)
@@ -254,7 +251,7 @@ func _create_buffers():
 		if not uniform_sets[buffer_index].is_valid():
 			push_error("Failed to create uniform set %d" % buffer_index)
 
-func _update_buffers():
+func _update_buffers() -> void:
 	# Resize buffers if particle count changed
 	var vec2_size = 2 * 4
 	var buffer_size = particle_count * vec2_size
@@ -286,11 +283,10 @@ func _update_buffers():
 		if environment_field and environment_field.has_method("get_field_buffer"):
 			field_buffer_rid = environment_field.get_field_buffer(buffer_index)
 		
-		if not field_buffer_rid.is_valid():
-			if not field_buffer.is_valid():
-				field_buffer = rd.storage_buffer_create(4)
-				field_buffer_size = 4
-			field_buffer_rid = field_buffer
+			if not field_buffer_rid.is_valid():
+				if not field_buffer.is_valid():
+					field_buffer = rd.storage_buffer_create(4)
+				field_buffer_rid = field_buffer
 		
 		var pos_uniform := RDUniform.new()
 		pos_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
@@ -319,9 +315,9 @@ func _update_buffers():
 		
 		uniform_sets[buffer_index] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
 
-func spawn_particles():
+func spawn_particles() -> void:
 	particles.clear()
-	var viewport_size = get_viewport_rect().size
+	var viewport_size: Vector2 = _get_sim_viewport_size()
 	
 	for i in range(particle_count):
 		var random_pos = Vector2(
@@ -331,7 +327,7 @@ func spawn_particles():
 		var particle = Particle.new(random_pos, Vector2.ZERO)
 		particles.append(particle)
 
-func _upload_positions():
+func _upload_positions() -> void:
 	# Pack positions into float array
 	for i in range(particles.size()):
 		positions_data[i * 2] = particles[i].position.x
@@ -341,7 +337,7 @@ func _upload_positions():
 	var position_bytes = positions_data.to_byte_array()
 	rd.buffer_update(position_buffer, 0, position_bytes.size(), position_bytes)
 
-func _upload_mu_locals():
+func _upload_mu_locals() -> void:
 	for i in range(particles.size()):
 		var pos: Vector2 = particles[i].position
 
@@ -360,11 +356,11 @@ func _upload_mu_locals():
 	var mu_bytes: PackedByteArray = mu_data.to_byte_array()
 	rd.buffer_update(mu_buffer, 0, mu_bytes.size(), mu_bytes)
 
-func _upload_uniforms(delta: float):
+func _upload_uniforms(delta: float) -> void:
 	# Pack uniforms into pre-allocated byte array (48 bytes = 12 floats for std140 alignment)
 	var uniform_bytes = uniform_bytes_buffer
 	
-	var viewport_size = get_viewport_rect().size
+	var viewport_size: Vector2 = _get_sim_viewport_size()
 	var field_grid_size: float = 0.0
 	if environment_field:
 		field_grid_size = float(environment_field.grid_resolution)
@@ -397,33 +393,7 @@ func _upload_uniforms(delta: float):
 	
 	rd.buffer_update(uniform_buffer, 0, uniform_bytes.size(), uniform_bytes)
 
-func _upload_field():
-	## Upload field data from environment_field to GPU buffer.
-	if not environment_field:
-		return
-	
-	var field_data = environment_field.get_field_data()
-	if field_data.is_empty():
-		return
-	
-	var grid_res = environment_field.grid_resolution
-	var buffer_size = grid_res * grid_res * 4  # 1 float per cell * 4 bytes
-	
-	# Resize buffer if needed
-	if not field_buffer.is_valid() or buffer_size != field_buffer_size:
-		if field_buffer.is_valid():
-			rd.free_rid(field_buffer)
-		field_buffer = rd.storage_buffer_create(buffer_size)
-		field_buffer_size = buffer_size
-		
-		# Field buffer is now accessed directly from environment_field
-		# Uniform sets are managed separately, no need to recreate here
-	
-	# Upload field data
-	var field_bytes = field_data.to_byte_array()
-	rd.buffer_update(field_buffer, 0, field_bytes.size(), field_bytes)
-
-func _dispatch_compute(delta: float):
+func _dispatch_compute(delta: float) -> void:
 	_upload_uniforms(delta)
 	
 	# Calculate workgroup count
@@ -440,7 +410,7 @@ func _dispatch_compute(delta: float):
 	rd.submit()
 	rd.sync()
 
-func _read_velocities():
+func _read_velocities() -> void:
 	# Read velocities from GPU
 	var output_bytes = rd.buffer_get_data(velocity_buffer)
 	var output_floats = output_bytes.to_float32_array()
@@ -459,9 +429,9 @@ func _read_velocities():
 				var s = clamp(velocity_smoothing, 0.0, 1.0)
 				particles[i].velocity = particles[i].velocity.lerp(new_velocity, s)
 
-func _update_particles(delta: float):
+func _update_particles(delta: float) -> void:
 	# Update positions based on velocities
-	var viewport_size = get_viewport_rect().size
+	var viewport_size: Vector2 = _get_sim_viewport_size()
 	
 	for particle in particles:
 		if max_speed > 0.0:
@@ -496,7 +466,7 @@ func _draw() -> void:
 
 		draw_circle(pos, radius, col)
 
-func _process(delta):
+func _process(delta: float) -> void:
 	if not rd:
 		return
 	if not shader.is_valid():
@@ -527,7 +497,7 @@ func _process(delta):
 	
 	# 3. GPU deposits (no CPU sync) - enabled only in COUPLED
 	if environment_field and simulation_mode == SimulationMode.COUPLED:
-		environment_field.deposit_particles_gpu(position_buffer, particle_count, get_viewport_rect().size)
+		environment_field.deposit_particles_gpu(position_buffer, particle_count, _get_sim_viewport_size())
 	
 	# 6. Update visualization occasionally (minimal CPU sync only for display)
 	# Always update if field exists and should be shown (works in all modes including SWARM_ON_FROZEN_FIELD)
@@ -537,7 +507,7 @@ func _process(delta):
 	
 	queue_redraw()
 
-func _exit_tree():
+func _exit_tree() -> void:
 	# Cleanup
 	for i in range(uniform_sets.size()):
 		if uniform_sets[i].is_valid():
@@ -556,3 +526,11 @@ func _exit_tree():
 		rd.free_rid(pipeline)
 	if shader.is_valid():
 		rd.free_rid(shader)
+
+func _get_sim_viewport_size() -> Vector2:
+	## Source of truth for simulation size under SubViewport.
+	var vp := get_viewport()
+	if vp == null:
+		return Vector2.ZERO
+	var s: Vector2i = vp.size
+	return Vector2(float(s.x), float(s.y))

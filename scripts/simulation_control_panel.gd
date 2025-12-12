@@ -3,11 +3,10 @@ extends Control
 
 ## Runtime control panel for tweaking simulation parameters live
 
-@export var environment_field_path: NodePath
-@export var particle_system_path: NodePath
-
-var environment_field: EnvironmentField = null
-var particle_system: Node = null  # ParticleSystemGPU
+## Authoritative wiring: exported references if set, otherwise groups.
+## Groups expected to be unique: "environment_field", "particle_system".
+@export var environment_field: EnvironmentField = null
+@export var particle_system: Node = null  # ParticleSystemGPU
 
 # UI References (null-safe lookups)
 var panel: Panel = null
@@ -163,20 +162,8 @@ func _safe_set_visible(node: CanvasItem, should_show: bool) -> void:
 		node.visible = should_show
 
 func _resolve_targets() -> void:
-	environment_field = null
-	particle_system = null
-
-	# Try NodePaths first (if set)
-	if environment_field_path != NodePath():
-		var n = get_node_or_null(environment_field_path)
-		if n is EnvironmentField:
-			environment_field = n
-	if particle_system_path != NodePath():
-		var p = get_node_or_null(particle_system_path)
-		if p != null and "simulation_mode" in p:
-			particle_system = p
-
-	# Always fall back to groups if NodePaths failed or weren't set
+	# Exported references are authoritative if present.
+	# Fall back to groups only when exports are unset.
 	if environment_field == null:
 		var gf = get_tree().get_first_node_in_group("environment_field")
 		if gf is EnvironmentField:
@@ -511,10 +498,6 @@ func _on_mode_selected(index: int):
 		return
 	if "simulation_mode" in particle_system:
 		particle_system.set("simulation_mode", index)
-
-func _on_advanced_toggled(button_pressed: bool):
-	# Backwards-compat shim (old signal hookup). Prefer _on_show_advanced_toggled().
-	_safe_set_visible(advanced_container, button_pressed)
 
 # Field slider handlers
 func _on_field_mu_changed(value: float):

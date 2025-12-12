@@ -64,8 +64,10 @@ float sample_field(vec2 world_pos) {
 		return 0.0;
 	}
 	
-	// Calculate buffer size (field_grid_size * field_grid_size)
-	int buffer_size = int(field_grid_size * field_grid_size);
+	// Compute field buffer size explicitly from grid_size^2.
+	// We avoid buffer `.length()` bounds checks because Metal can report 0 for SSBO length;
+	// keep this identifier consistent or the shader will fail if a renamed symbol is referenced out of scope.
+	int field_buffer_size = int(field_grid_size * field_grid_size);
 	
 	// Convert world position to UV coordinates [0, 1]
 	vec2 uv = world_pos / vec2(viewport_width, viewport_height);
@@ -92,10 +94,10 @@ float sample_field(vec2 world_pos) {
 	int idx11 = y1 * int(field_grid_size) + x1;
 	
 	// Bounds check using calculated buffer size instead of .length()
-	float v00 = (idx00 >= 0 && idx00 < buffer_size) ? field_data[idx00] : 0.0;
-	float v10 = (idx10 >= 0 && idx10 < buffer_size) ? field_data[idx10] : 0.0;
-	float v01 = (idx01 >= 0 && idx01 < buffer_size) ? field_data[idx01] : 0.0;
-	float v11 = (idx11 >= 0 && idx11 < buffer_size) ? field_data[idx11] : 0.0;
+	float v00 = (idx00 >= 0 && idx00 < field_buffer_size) ? field_data[idx00] : 0.0;
+	float v10 = (idx10 >= 0 && idx10 < field_buffer_size) ? field_data[idx10] : 0.0;
+	float v01 = (idx01 >= 0 && idx01 < field_buffer_size) ? field_data[idx01] : 0.0;
+	float v11 = (idx11 >= 0 && idx11 < field_buffer_size) ? field_data[idx11] : 0.0;
 	
 	// Bilinear interpolation
 	float v0 = mix(v00, v10, tx);
@@ -228,4 +230,3 @@ void main() {
 	
 	velocities[i] = v;
 }
-

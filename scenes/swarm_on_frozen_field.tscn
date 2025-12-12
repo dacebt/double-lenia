@@ -12,5 +12,3 @@ environment_field = NodePath("EnvironmentField")
 [node name="EnvironmentField" parent="." instance=ExtResource("2_0")]
 
 [node name="SimulationControlPanel" parent="." instance=ExtResource("3_0")]
-environment_field_path = NodePath("../EnvironmentField")
-particle_system_path = NodePath("..")

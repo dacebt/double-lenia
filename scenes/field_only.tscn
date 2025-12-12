@@ -8,4 +8,3 @@
 [node name="EnvironmentField" parent="." instance=ExtResource("1_0")]
 
 [node name="SimulationControlPanel" parent="." instance=ExtResource("2_0")]
-environment_field_path = NodePath("../EnvironmentField")

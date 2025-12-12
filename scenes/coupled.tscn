@@ -18,5 +18,3 @@ field_sigma = 0.08
 field_kernel_width = 10.0
 
 [node name="SimulationControlPanel" parent="." instance=ExtResource("3_0")]
-environment_field_path = NodePath("../EnvironmentField")
-particle_system_path = NodePath("..")

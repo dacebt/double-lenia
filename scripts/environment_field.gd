@@ -547,7 +547,7 @@ func _deposit_to_cpu(positions: PackedVector2Array) -> void:
 	if values.size() != grid_resolution * grid_resolution:
 		values.resize(grid_resolution * grid_resolution)
 	
-	var viewport_size: Vector2 = get_viewport_rect().size
+	var viewport_size: Vector2 = _get_sim_viewport_size()
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return
 	
@@ -617,7 +617,7 @@ func sample(world_pos: Vector2) -> float:
 	if values.size() == 0:
 		return 0.0
 	
-	var viewport_size: Vector2 = get_viewport_rect().size
+	var viewport_size: Vector2 = _get_sim_viewport_size()
 	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
 		return 0.0
 	
@@ -658,7 +658,7 @@ func get_environment_color(world_pos: Vector2) -> Color:
 	if values.is_empty():
 		return Color.WHITE
 	
-	var vp_size: Vector2 = get_viewport_rect().size
+	var vp_size: Vector2 = _get_sim_viewport_size()
 	
 	var u: float = clamp(world_pos.x / vp_size.x, 0.0, 1.0)
 	var v: float = clamp(world_pos.y / vp_size.y, 0.0, 1.0)
@@ -837,7 +837,7 @@ func _on_viewport_resize() -> void:
 func _update_field_sprite_scale() -> void:
 	if field_sprite == null or vis_texture == null:
 		return
-	var vp_size: Vector2 = get_viewport_rect().size
+	var vp_size: Vector2 = _get_sim_viewport_size()
 	if vp_size.x <= 0.0 or vp_size.y <= 0.0:
 		return
 	var tex_size: Vector2 = vis_texture.get_size()
@@ -956,3 +956,11 @@ func _exit_tree():
 			rd.free_rid(texture_pipeline)
 		if texture_shader.is_valid():
 			rd.free_rid(texture_shader)
+
+func _get_sim_viewport_size() -> Vector2:
+	## Source of truth for simulation size under SubViewport.
+	var vp := get_viewport()
+	if vp == null:
+		return Vector2.ZERO
+	var s: Vector2i = vp.size
+	return Vector2(float(s.x), float(s.y))
