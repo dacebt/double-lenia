@@ -1,7 +1,12 @@
-> ** Author Note ** 
-Hey! This project was 100% AI assisted work that was inspired by a conversation with Claude (OPUS4.5) and ChatGPT (5.1-5.2). I am constantly deep diving into hard subjects that I can only rely on my intuition as Claude and GPT do thier best to explain these very complicated subjects. 
-This project is the result of that curiousity, the development of colloboration scripts for Claude and ChatGPT and deep conversations with the two (and between the two LLMs) as well as a coding agent locally.
-I almost stopped several times as it did get complicated very quickly as I have never really built in GODOT or this kinda simulation. Lots of knowledge earned and curiosity itched. 
+> **\*\* Author Note \*\***
+>
+> Hey! This project was 100% AI assisted work that was inspired by a conversation with Claude (OPUS4.5) and ChatGPT (5.1-5.2).
+> 
+> I am constantly deep diving into hard subjects that I can only rely on my intuition as Claude and GPT do thier best to explain these very complicated subjects.
+> 
+> This project is the result of that curiousity, the development of colloboration scripts for Claude and ChatGPT and deep conversations with the two (and between the two LLMs) as well as a coding agent locally.
+>
+> I almost stopped several times as it did get complicated very quickly as I have never really built in GODOT or this kinda simulation. Lots of knowledge earned and curiosity itched. 
 ___
 # Double Lenia (Godot)
 
