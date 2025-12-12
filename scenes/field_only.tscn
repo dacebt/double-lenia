@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3 uid="uid://cdxb8kcnof14q"]
+
+[ext_resource type="PackedScene" path="res://scenes/environment_field.tscn" id="1_0"]
+[ext_resource type="PackedScene" path="res://scenes/simulation_control_panel.tscn" id="2_0"]
+
+[node name="FieldOnly" type="Node2D"]
+
+[node name="EnvironmentField" parent="." instance=ExtResource("1_0")]
+
+[node name="SimulationControlPanel" parent="." instance=ExtResource("2_0")]
+environment_field_path = NodePath("../EnvironmentField")

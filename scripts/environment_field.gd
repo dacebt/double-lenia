@@ -9,30 +9,35 @@ extends Node2D
 ## Resolution of the field grid (width × height cells)
 @export var grid_resolution: int = 256
 
-## Frequency of Perlin noise used for initial field condition (not used during evolution)
-@export var noise_frequency: float = 3.0
 
 @export_group("Field Evolution")
-## Target density for Lenia growth function. Field grows toward this value.
+## Center of the Lenia growth curve. Field density grows toward this target value.
 @export var field_mu: float = 0.25
 
-## Width of growth function. Controls how sharply field responds to density differences.
+## Width of the Lenia growth function. Controls how sharply field responds to density differences.
 @export var field_sigma: float = 0.03
 
-## Radius of ring kernel used for field convolution (r0 parameter).
+## Radius of ring kernel used for field convolution (r0 parameter). Distance from center where kernel peaks.
 @export var field_kernel_radius: float = 13.0
 
-## Width of ring kernel used for field convolution (s parameter).
+## Width of ring kernel used for field convolution (s parameter). Controls how spread out the kernel is.
 @export var field_kernel_width: float = 3.0
 
 ## Evolution speed multiplier. Higher values = faster field changes. Includes time scaling.
 @export var field_dt: float = 0.05
 
+@export_group("Particle Coupling")
 ## Amount of density each particle deposits into the field per frame.
 @export var deposit_amount: float = 0.001
 
 ## Radius of Gaussian splat when particles deposit into field.
 @export var deposit_radius: float = 20.0
+
+## Natural resting state of field. Field decays toward this value when no particles are present.
+@export var field_baseline: float = 0.3
+
+## Decay rate toward baseline. Higher values = faster decay back to baseline.
+@export var field_decay: float = 0.01
 
 @export_group("Visualization")
 ## Enable field visualization background
@@ -44,6 +49,11 @@ extends Node2D
 var values: PackedFloat32Array
 var field_min: float = 0.0
 var field_max: float = 0.0
+
+# Pre-allocated buffers for uniform uploads
+var uniform_bytes_buffer: PackedByteArray  # For field evolution uniforms (32 bytes)
+var deposit_uniform_bytes_buffer: PackedByteArray  # For deposit uniforms (32 bytes)
+var vis_uniform_bytes_buffer: PackedByteArray  # For visualization uniforms (8 bytes)
 
 # Noise generator (for initial condition)
 var noise: FastNoiseLite
@@ -65,6 +75,7 @@ var vis_texture_rid: RID  # GPU texture
 var vis_texture: ImageTexture  # Godot texture wrapper
 var vis_texture_uniform_set: RID
 var vis_texture_uniform_buffer: RID
+var vis_last_buffer_index: int = -1  # Track last buffer index to avoid recreating uniform set
 var vis_canvas_layer: CanvasLayer
 var vis_control: Control
 var vis_rect: TextureRect
@@ -75,12 +86,13 @@ var deposit_shader: RID
 var deposit_pipeline: RID
 var deposit_uniform_buffer: RID
 var deposit_uniform_set: RID
+var deposit_last_buffer_index: int = -1  # Track last buffer index to avoid recreating uniform set
 
 func _ready() -> void:
-	# Create and configure FastNoiseLite
+	# Create and configure FastNoiseLite (currently unused, field initialized with Gaussian blobs)
 	noise = FastNoiseLite.new()
 	noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	noise.frequency = 1.0  # Use 1.0 as base, we multiply by noise_frequency in sampling
+	noise.frequency = 1.0
 	noise.seed = 0
 	# GPU init happens later via initialize_gpu()
 
@@ -93,7 +105,11 @@ func initialize_gpu(rendering_device: RenderingDevice) -> void:
 		_initialize_field_from_noise()
 		_setup_deposit_shader()
 		use_gpu = true
-		print("ENV_FIELD: GPU compute initialized (shared RD)")
+		
+		# Pre-allocate uniform buffers
+		uniform_bytes_buffer.resize(32)  # Field evolution uniforms
+		deposit_uniform_bytes_buffer.resize(32)  # Deposit uniforms
+		vis_uniform_bytes_buffer.resize(8)  # Visualization uniforms
 	else:
 		push_error("No RenderingDevice provided")
 		_generate_field()  # Fallback to CPU-only mode
@@ -275,8 +291,8 @@ func _setup_deposit_shader() -> void:
 		push_error("Failed to create deposit pipeline")
 		return
 	
-	# Create uniform buffer for deposit shader (6 floats: grid_size, particle_count, deposit_amount, deposit_radius, viewport_width, viewport_height)
-	# std140 alignment: 6 floats = 24 bytes, padded to 32 bytes
+	# Create uniform buffer for deposit shader (8 floats: grid_size, particle_count, deposit_amount, deposit_radius, viewport_width, viewport_height, field_baseline, field_decay)
+	# std140 alignment: 8 floats = 32 bytes (exactly 2 vec4s)
 	deposit_uniform_buffer = rd.uniform_buffer_create(32)
 	if not deposit_uniform_buffer.is_valid():
 		push_error("Failed to create deposit uniform buffer")
@@ -333,9 +349,8 @@ func _initialize_field_from_noise():
 	rd.buffer_update(field_buffers[0], 0, initial_data.size(), initial_data)
 
 func _upload_uniforms(delta: float):
-	# Pack uniform buffer with parameters
-	var uniform_bytes := PackedByteArray()
-	uniform_bytes.resize(32)  # 6 floats padded to 32 bytes (std140 alignment)
+	# Pack uniform buffer with parameters using pre-allocated buffer
+	var uniform_bytes := uniform_bytes_buffer
 	
 	var offset = 0
 	uniform_bytes.encode_float(offset, float(grid_resolution))
@@ -377,12 +392,6 @@ func evolve(delta: float) -> void:
 	
 	# Swap buffers
 	current_buffer = 1 - current_buffer
-	
-	# Debug: print field range after evolution
-	if Engine.get_process_frames() % 60 == 0:
-		# Read field to CPU to get current min/max
-		_read_field_to_cpu()
-		print("Field evolved - min: %.4f, max: %.4f" % [field_min, field_max])
 
 func sync_to_cpu() -> void:
 	## Sync field from GPU to CPU for sampling. Called by particle system.
@@ -470,9 +479,8 @@ func deposit_particles_gpu(position_buffer: RID, particle_count: int, viewport_s
 	if not deposit_pipeline.is_valid():
 		return
 	
-	# Update uniform buffer
-	var uniform_bytes := PackedByteArray()
-	uniform_bytes.resize(32)  # 6 floats padded to 32 bytes
+	# Update uniform buffer using pre-allocated buffer
+	var uniform_bytes := deposit_uniform_bytes_buffer
 	var offset = 0
 	uniform_bytes.encode_float(offset, float(grid_resolution))
 	offset += 4
@@ -485,28 +493,34 @@ func deposit_particles_gpu(position_buffer: RID, particle_count: int, viewport_s
 	uniform_bytes.encode_float(offset, viewport_size.x)
 	offset += 4
 	uniform_bytes.encode_float(offset, viewport_size.y)
+	offset += 4
+	uniform_bytes.encode_float(offset, field_baseline)
+	offset += 4
+	uniform_bytes.encode_float(offset, field_decay)
 	rd.buffer_update(deposit_uniform_buffer, 0, uniform_bytes.size(), uniform_bytes)
 	
-	# Create/update uniform set
-	if deposit_uniform_set.is_valid():
-		rd.free_rid(deposit_uniform_set)
-	
-	var field_uniform := RDUniform.new()
-	field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	field_uniform.binding = 0
-	field_uniform.add_id(field_buffers[current_buffer])  # Write to current buffer
-	
-	var position_uniform := RDUniform.new()
-	position_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	position_uniform.binding = 1
-	position_uniform.add_id(position_buffer)
-	
-	var params_uniform := RDUniform.new()
-	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-	params_uniform.binding = 2
-	params_uniform.add_id(deposit_uniform_buffer)
-	
-	deposit_uniform_set = rd.uniform_set_create([field_uniform, position_uniform, params_uniform], deposit_shader, 0)
+	# Create/update uniform set only if buffer index changed or doesn't exist
+	if deposit_last_buffer_index != current_buffer or not deposit_uniform_set.is_valid():
+		if deposit_uniform_set.is_valid():
+			rd.free_rid(deposit_uniform_set)
+		
+		var field_uniform := RDUniform.new()
+		field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		field_uniform.binding = 0
+		field_uniform.add_id(field_buffers[current_buffer])  # Write to current buffer
+		
+		var position_uniform := RDUniform.new()
+		position_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		position_uniform.binding = 1
+		position_uniform.add_id(position_buffer)
+		
+		var params_uniform := RDUniform.new()
+		params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
+		params_uniform.binding = 2
+		params_uniform.add_id(deposit_uniform_buffer)
+		
+		deposit_uniform_set = rd.uniform_set_create([field_uniform, position_uniform, params_uniform], deposit_shader, 0)
+		deposit_last_buffer_index = current_buffer
 	
 	# Dispatch compute shader
 	var workgroups = int(ceil(float(grid_resolution) / 8.0))
@@ -665,15 +679,28 @@ func get_environment_color(world_pos: Vector2) -> Color:
 	var v1: float = lerp(v01, v11, tx)
 	var v_sample: float = lerp(v0, v1, ty)
 	
-	var range_v: float = max(field_max - field_min, 0.0001)
-	var t: float = clamp((v_sample - field_min) / range_v, 0.0, 1.0)
+	# Color mapping: dark -> green (at mu) -> yellow -> red
+	# NOTE: This must match the color mapping in field_to_texture.glsl
+	var value: float = clamp(v_sample, 0.0, 1.0)
+	var color: Vector3
 	
-	return Color.from_hsv(
-		lerp(0.65, 0.05, t),
-		0.7,
-		0.9,
-		1.0
-	)
+	if value < field_mu:
+		var t: float = value / max(field_mu, 0.001)
+		var dark: Vector3 = Vector3(0.0, 0.0, 0.1)
+		var green: Vector3 = Vector3(0.0, 0.7, 0.2)
+		color = dark.lerp(green, t)
+	else:
+		var t: float = (value - field_mu) / max(1.0 - field_mu, 0.001)
+		var green: Vector3 = Vector3(0.0, 0.7, 0.2)
+		var yellow: Vector3 = Vector3(0.9, 0.9, 0.0)
+		var red: Vector3 = Vector3(1.0, 0.2, 0.0)
+		
+		if t < 0.5:
+			color = green.lerp(yellow, t * 2.0)
+		else:
+			color = yellow.lerp(red, (t - 0.5) * 2.0)
+	
+	return Color(color.x, color.y, color.z, 1.0)
 
 # _process() removed - field evolution is now driven by particle system
 # This ensures explicit frame ordering: field evolves -> particles compute -> particles deposit
@@ -826,33 +853,34 @@ func _update_visualization() -> void:
 	if not texture_pipeline.is_valid() or not vis_texture_rid.is_valid():
 		return
 	
-	# Update uniform buffer
-	var uniform_bytes := PackedByteArray()
-	uniform_bytes.resize(8)
+	# Update uniform buffer using pre-allocated buffer
+	var uniform_bytes := vis_uniform_bytes_buffer
 	uniform_bytes.encode_float(0, float(grid_resolution))
 	uniform_bytes.encode_float(4, field_mu)
 	rd.buffer_update(vis_texture_uniform_buffer, 0, uniform_bytes.size(), uniform_bytes)
 	
-	# Update uniform set with current field buffer
-	if vis_texture_uniform_set.is_valid():
-		rd.free_rid(vis_texture_uniform_set)
-	
-	var field_uniform := RDUniform.new()
-	field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-	field_uniform.binding = 0
-	field_uniform.add_id(field_buffers[current_buffer])
-	
-	var texture_uniform := RDUniform.new()
-	texture_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
-	texture_uniform.binding = 1
-	texture_uniform.add_id(vis_texture_rid)
-	
-	var params_uniform := RDUniform.new()
-	params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
-	params_uniform.binding = 2
-	params_uniform.add_id(vis_texture_uniform_buffer)
-	
-	vis_texture_uniform_set = rd.uniform_set_create([field_uniform, texture_uniform, params_uniform], texture_shader, 0)
+	# Update uniform set with current field buffer only if buffer index changed or doesn't exist
+	if vis_last_buffer_index != current_buffer or not vis_texture_uniform_set.is_valid():
+		if vis_texture_uniform_set.is_valid():
+			rd.free_rid(vis_texture_uniform_set)
+		
+		var field_uniform := RDUniform.new()
+		field_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+		field_uniform.binding = 0
+		field_uniform.add_id(field_buffers[current_buffer])
+		
+		var texture_uniform := RDUniform.new()
+		texture_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+		texture_uniform.binding = 1
+		texture_uniform.add_id(vis_texture_rid)
+		
+		var params_uniform := RDUniform.new()
+		params_uniform.uniform_type = RenderingDevice.UNIFORM_TYPE_UNIFORM_BUFFER
+		params_uniform.binding = 2
+		params_uniform.add_id(vis_texture_uniform_buffer)
+		
+		vis_texture_uniform_set = rd.uniform_set_create([field_uniform, texture_uniform, params_uniform], texture_shader, 0)
+		vis_last_buffer_index = current_buffer
 	
 	# Dispatch compute shader
 	var workgroups = int(ceil(float(grid_resolution) / 8.0))

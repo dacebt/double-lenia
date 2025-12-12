@@ -23,6 +23,8 @@ layout(set = 0, binding = 2, std140) uniform Params {
 	float deposit_radius;
 	float viewport_width;
 	float viewport_height;
+	float field_baseline;
+	float field_decay;
 };
 
 // Helper to convert 2D coords to 1D index
@@ -63,9 +65,7 @@ void main() {
 	// Add to field with decay toward baseline
 	int field_idx = idx(cell.x, cell.y);
 	float current = field_data[field_idx];
-	float baseline = 0.3;  // Natural resting state
-	float decay = 0.01;    // How fast field returns to baseline
-	float new_value = current + deposit - decay * (current - baseline);
+	float new_value = current + deposit - field_decay * (current - field_baseline);
 	new_value = clamp(new_value, 0.0, 1.0);
 	field_data[field_idx] = new_value;
 }

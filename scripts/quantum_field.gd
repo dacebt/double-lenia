@@ -68,8 +68,6 @@ func _setup_compute_shader():
 		push_error("Shader compile error: " + compile_error)
 		return
 	
-	print("QUANTUM: Shader compiled successfully")
-	
 	# Create shader from SPIR-V
 	shader = rd.shader_create_from_spirv(shader_spirv)
 	if not shader.is_valid():
@@ -81,8 +79,6 @@ func _setup_compute_shader():
 	if not pipeline.is_valid():
 		push_error("Failed to create compute pipeline")
 		return
-	
-	print("QUANTUM: Pipeline created: ", pipeline.is_valid())
 
 func _create_buffers():
 	# Calculate buffer size: grid_size * grid_size * 2 floats * 4 bytes
@@ -95,8 +91,6 @@ func _create_buffers():
 			push_error("Failed to create buffer " + str(i))
 			return
 	
-	print("QUANTUM: Buffers created: ", psi_buffers[0].is_valid(), ", ", psi_buffers[1].is_valid())
-	
 	# Create uniform buffer (5 floats: grid_size, diffusion, mu, sigma, dt)
 	var uniform_buffer_size = 32  # 5 floats padded to 32 bytes (std140 alignment)
 	uniform_buffer = rd.uniform_buffer_create(uniform_buffer_size)
@@ -104,11 +98,8 @@ func _create_buffers():
 		push_error("Failed to create uniform buffer")
 		return
 	
-	print("QUANTUM: Uniform buffer created: ", uniform_buffer.is_valid())
-	
 	# Create uniform sets for both ping-pong directions
 	# Set 0: read from buffer[0], write to buffer[1]
-	print("QUANTUM: Creating uniform set 0...")
 	var read_uniform_0 := RDUniform.new()
 	read_uniform_0.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
 	read_uniform_0.binding = 0
@@ -125,13 +116,11 @@ func _create_buffers():
 	params_uniform_0.add_id(uniform_buffer)
 	
 	uniform_sets[0] = rd.uniform_set_create([read_uniform_0, write_uniform_0, params_uniform_0], shader, 0)
-	print("QUANTUM: Uniform set 0 created, valid: ", uniform_sets[0].is_valid())
 	if not uniform_sets[0].is_valid():
 		push_error("Failed to create uniform set 0")
 		return
 	
 	# Set 1: read from buffer[1], write to buffer[0]
-	print("QUANTUM: Creating uniform set 1...")
 	var read_uniform_1 := RDUniform.new()
 	read_uniform_1.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
 	read_uniform_1.binding = 0
@@ -148,12 +137,9 @@ func _create_buffers():
 	params_uniform_1.add_id(uniform_buffer)
 	
 	uniform_sets[1] = rd.uniform_set_create([read_uniform_1, write_uniform_1, params_uniform_1], shader, 0)
-	print("QUANTUM: Uniform set 1 created, valid: ", uniform_sets[1].is_valid())
 	if not uniform_sets[1].is_valid():
 		push_error("Failed to create uniform set 1")
 		return
-	
-	print("QUANTUM: Uniform sets created: ", uniform_sets[0].is_valid(), ", ", uniform_sets[1].is_valid())
 
 func _initialize_wave_function():
 	var initial_data := PackedByteArray()
@@ -356,19 +342,6 @@ func _process(delta: float):
 	current_buffer = 1 - current_buffer
 	
 	_update_display()
-	
-	# Debug: sample values every 60 frames
-	if Engine.get_process_frames() % 60 == 0:
-		var output_buf = psi_buffers[current_buffer]
-		var byte_data = rd.buffer_get_data(output_buf)
-		
-		# Sample center pixel instead of corner
-		var center_offset = (int(grid_size / 2.0) * grid_size + int(grid_size / 2.0)) * 8
-		if byte_data.size() > center_offset + 8:
-			var real = byte_data.decode_float(center_offset)
-			var imag = byte_data.decode_float(center_offset + 4)
-			var density = real * real + imag * imag
-			print("Center - real: ", real, " imag: ", imag, " density: ", density)
 
 func _exit_tree():
 	# Cleanup all RIDs

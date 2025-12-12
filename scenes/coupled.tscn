@@ -1,20 +1,21 @@
-[gd_scene load_steps=4 format=3 uid="uid://c4mvqvq3p4kj3"]
+[gd_scene load_steps=4 format=3 uid="uid://cunpolt6kudj1"]
 
 [ext_resource type="Script" uid="uid://d8qppnhbuy1o" path="res://scripts/particle_system_gpu.gd" id="1_0"]
 [ext_resource type="PackedScene" path="res://scenes/environment_field.tscn" id="2_0"]
 [ext_resource type="PackedScene" path="res://scenes/simulation_control_panel.tscn" id="3_0"]
 
-[node name="Main" type="Node2D" node_paths=PackedStringArray("environment_field")]
+[node name="Coupled" type="Node2D"]
 script = ExtResource("1_0")
-particle_count = 166
-min_dist = 30.0
-particle_kernel_width = 50.0
+particle_count = 3000
+min_dist = 25.0
+particle_kernel_radius = 1000.0
+simulation_mode = 2
 environment_field = NodePath("EnvironmentField")
-gradient_strength = 300.0
-repulsion_strength = 10.0
-time_scale = 200.0
+gradient_strength = 50.0
 
 [node name="EnvironmentField" parent="." instance=ExtResource("2_0")]
+field_sigma = 0.08
+field_kernel_width = 10.0
 
 [node name="SimulationControlPanel" parent="." instance=ExtResource("3_0")]
 environment_field_path = NodePath("../EnvironmentField")

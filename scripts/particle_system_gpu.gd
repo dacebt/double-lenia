@@ -3,6 +3,16 @@ extends Node2D
 const PARTICLE_RADIUS = 2.0
 const LOCAL_GROUP_SIZE = 64
 
+enum SimulationMode {
+	FIELD_ONLY,
+	SWARM_ON_FROZEN_FIELD,
+	COUPLED
+}
+
+@export_group("Simulation")
+## Simulation mode: FIELD_ONLY (field evolves, no particles), SWARM_ON_FROZEN_FIELD (particles on static field), COUPLED (full interaction)
+@export var simulation_mode: SimulationMode = SimulationMode.COUPLED
+
 @export_group("Particles")
 ## Number of particles in the simulation.
 @export var particle_count: int = 50
@@ -11,16 +21,19 @@ const LOCAL_GROUP_SIZE = 64
 @export var min_dist: float = 10.0
 
 @export_group("Particle Interactions")
-## Radius of ring kernel for particle-particle interactions (r0 parameter).
+## Radius of ring kernel for particle-particle interactions (r0 parameter). Distance where interaction peaks.
 @export var particle_kernel_radius: float = 50.0
 
-## Width of ring kernel for particle-particle interactions (s parameter).
+## Width of ring kernel for particle-particle interactions (s parameter). Controls interaction spread.
 @export var particle_kernel_width: float = 15.0
 
-## Width of growth function for particles. Controls response to density differences.
+## Width of growth function for particles. Controls how sharply particles respond to density differences.
 @export var particle_sigma: float = 0.02
 
-@export_group("Environment Coupling")
+@export_group("Field Coupling")
+## Reference to the environment field that particles interact with.
+@export var environment_field: EnvironmentField = null
+
 ## Base mu value for particles. Combined with environment field to set per-particle mu.
 ## NOTE: Will be deprecated in Phase 3 when particles follow field gradient directly.
 @export var mu_base: float = 0.04
@@ -29,14 +42,11 @@ const LOCAL_GROUP_SIZE = 64
 ## NOTE: Will be deprecated in Phase 3.
 @export var mu_range: float = 0.02
 
-## Reference to the environment field that particles interact with.
-@export var environment_field: EnvironmentField = null
-
 @export_group("Forces")
-## Strength of gradient-based movement force.
+## Strength of gradient-based movement force. Controls how strongly particles follow the field gradient.
 @export var gradient_strength: float = 100.0
 
-## Strength of particle repulsion force.
+## Strength of particle repulsion force. Prevents particles from clustering too closely.
 @export var repulsion_strength: float = 50.0
 
 ## Global time scaling for particle movement.
@@ -64,6 +74,7 @@ var particles: Array[Particle] = []
 var positions_data: PackedFloat32Array
 var velocities_data: PackedFloat32Array
 var mu_data: PackedFloat32Array
+var uniform_bytes_buffer: PackedByteArray  # Pre-allocated buffer for uniform uploads
 
 func _ready():
 	rd = RenderingServer.create_local_rendering_device()
@@ -124,6 +135,9 @@ func _setup_compute_shader():
 	
 	# Create storage buffers (will be resized in _update_buffers)
 	_create_buffers()
+	
+	# Pre-allocate uniform buffer (48 bytes = 12 floats for std140 alignment)
+	uniform_bytes_buffer.resize(48)
 
 func _create_buffers():
 	# Calculate buffer sizes
@@ -233,8 +247,6 @@ func _create_buffers():
 		uniform_sets[buffer_index] = rd.uniform_set_create([pos_uniform, vel_uniform, mu_uniform, params_uniform, field_uniform], shader, 0)
 		if not uniform_sets[buffer_index].is_valid():
 			push_error("Failed to create uniform set %d" % buffer_index)
-		else:
-			print("Created uniform_sets[%d] with field_buffer RID: %s" % [buffer_index, field_buffer_rid])
 
 func _update_buffers():
 	# Resize buffers if particle count changed
@@ -343,9 +355,8 @@ func _upload_mu_locals():
 	rd.buffer_update(mu_buffer, 0, mu_bytes.size(), mu_bytes)
 
 func _upload_uniforms(delta: float):
-	# Pack uniforms into byte array (48 bytes = 12 floats for std140 alignment)
-	var uniform_bytes = PackedByteArray()
-	uniform_bytes.resize(48)
+	# Pack uniforms into pre-allocated byte array (48 bytes = 12 floats for std140 alignment)
+	var uniform_bytes = uniform_bytes_buffer
 	
 	var viewport_size = get_viewport_rect().size
 	var field_grid_size: float = 0.0
@@ -379,12 +390,6 @@ func _upload_uniforms(delta: float):
 	uniform_bytes.encode_float(offset, 0.0)
 	
 	rd.buffer_update(uniform_buffer, 0, uniform_bytes.size(), uniform_bytes)
-	
-	# Debug: verify uniforms are being sent
-	if Engine.get_process_frames() % 120 == 0:
-		print("Uniforms - gradient: %.1f, repulsion: %.1f, viewport: %.0fx%.0f, grid: %.0f" % [
-			gradient_strength, repulsion_strength, viewport_size.x, viewport_size.y, field_grid_size
-		])
 
 func _upload_field():
 	## Upload field data from environment_field to GPU buffer.
@@ -428,12 +433,6 @@ func _dispatch_compute(delta: float):
 	# Submit and sync
 	rd.submit()
 	rd.sync()
-	
-	# Debug: verify dispatch happens
-	if Engine.get_process_frames() % 120 == 0:
-		print("Dispatch - workgroups: %d, uniform_set valid: %s" % [
-			workgroups, uniform_sets[current_field_index].is_valid()
-		])
 
 func _read_velocities():
 	# Read velocities from GPU
@@ -475,10 +474,6 @@ func _update_particles(delta: float):
 			particle.position.y += viewport_size.y
 		elif particle.position.y >= viewport_size.y:
 			particle.position.y -= viewport_size.y
-	
-	# Debug: verify positions update
-	if Engine.get_process_frames() % 120 == 0 and particles.size() > 0:
-		print("After update - p0 pos: %s" % particles[0].position)
 
 func _draw() -> void:
 	if particles.is_empty():
@@ -507,56 +502,29 @@ func _process(delta):
 		spawn_particles()
 		_update_buffers()
 	
-	# 1. Evolve field first (GPU evolution)
-	if environment_field:
+	# 1. Evolve field first (GPU evolution) - enabled in FIELD_ONLY and COUPLED
+	if environment_field and (simulation_mode == SimulationMode.FIELD_ONLY or simulation_mode == SimulationMode.COUPLED):
 		environment_field.evolve(delta)
 		# Update field index to match environment's current buffer
 		current_field_index = environment_field.current_buffer
+	
+	# 2. Particle compute/movement - enabled in SWARM_ON_FROZEN_FIELD and COUPLED
+	if simulation_mode == SimulationMode.SWARM_ON_FROZEN_FIELD or simulation_mode == SimulationMode.COUPLED:
+		# Upload particle data and dispatch compute
+		_upload_positions()
+		_upload_mu_locals()
+		_dispatch_compute(delta)
 		
-		# DEBUG: Verify field buffer has data
-		if Engine.get_process_frames() % 120 == 0:
-			var field_buf = environment_field.get_field_buffer(current_field_index)
-			if field_buf.is_valid():
-				var field_bytes = rd.buffer_get_data(field_buf)
-				var field_floats = field_bytes.to_float32_array()
-				if field_floats.size() >= 10:
-					print("Field buffer[%d] first 10 values: %s" % [current_field_index, str(field_floats.slice(0, 10))])
-				else:
-					print("Field buffer[%d] size: %d floats" % [current_field_index, field_floats.size()])
-			else:
-				print("Field buffer[%d] is INVALID" % current_field_index)
+		# Read results and move particles
+		_read_velocities()
+		_update_particles(delta)
 	
-	# Debug: check field values and gradients (occasional CPU sync for debug only)
-	if environment_field and Engine.get_process_frames() % 60 == 0:
-		environment_field.sync_to_cpu()  # Sync only for debug output
-		var center = get_viewport_rect().size / 2.0
-		var val_center = environment_field.sample(center)
-		var val_right = environment_field.sample(center + Vector2(10, 0))
-		var val_up = environment_field.sample(center + Vector2(0, 10))
-		var grad = Vector2(val_right - val_center, val_up - val_center) / 10.0
-		print("Field center: %.4f, gradient mag: %.6f, min: %.4f, max: %.4f" % [val_center, grad.length(), environment_field.field_min, environment_field.field_max])
-	
-	# 3. Upload particle data and dispatch compute
-	_upload_positions()
-	_upload_mu_locals()
-	_dispatch_compute(delta)
-	
-	# 4. Read results and move particles
-	_read_velocities()
-	
-	# Debug: verify velocity values
-	if Engine.get_process_frames() % 120 == 0:
-		if particles.size() > 0:
-			print("Velocity p0: %s, position p0: %s" % [particles[0].velocity, particles[0].position])
-	
-	_update_particles(delta)
-	
-	# 5. GPU deposits (no CPU sync)
-	if environment_field:
+	# 3. GPU deposits (no CPU sync) - enabled only in COUPLED
+	if environment_field and simulation_mode == SimulationMode.COUPLED:
 		environment_field.deposit_particles_gpu(position_buffer, particle_count, get_viewport_rect().size)
 	
 	# 6. Update visualization occasionally (minimal CPU sync only for display)
-	if environment_field and Engine.get_process_frames() % 5 == 0:
+	if environment_field and Engine.get_process_frames() % environment_field.vis_update_interval == 0:
 		environment_field.update_display()
 	
 	queue_redraw()

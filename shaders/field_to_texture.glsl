@@ -26,6 +26,7 @@ void main() {
 	float value = field_data[idx];
 	
 	// Color mapping: dark -> green (at mu) -> yellow -> red
+	// NOTE: This must match the color mapping in EnvironmentField.get_environment_color()
 	vec3 color;
 	
 	if (value < field_mu) {
