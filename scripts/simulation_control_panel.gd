@@ -829,6 +829,33 @@ func _apply_tuning_ranges() -> void:
 		field_kernel_width_slider.min_value = 0.5
 		field_kernel_width_slider.max_value = 30.0
 		field_kernel_width_slider.step = 0.5
+	
+	# Particle Lenia parameters (advanced)
+	if particle_kernel_radius_slider:
+		particle_kernel_radius_slider.min_value = 10.0
+		particle_kernel_radius_slider.max_value = 200.0
+		particle_kernel_radius_slider.step = 1.0
+	
+	if particle_kernel_width_slider:
+		particle_kernel_width_slider.min_value = 1.0
+		particle_kernel_width_slider.max_value = 50.0
+		particle_kernel_width_slider.step = 0.5
+	
+	if particle_sigma_slider:
+		particle_sigma_slider.min_value = 0.001
+		particle_sigma_slider.max_value = 0.1
+		particle_sigma_slider.step = 0.001
+	
+	# Field → Particle coupling (advanced)
+	if mu_base_slider:
+		mu_base_slider.min_value = 0.0
+		mu_base_slider.max_value = 0.2
+		mu_base_slider.step = 0.001
+	
+	if mu_range_slider:
+		mu_range_slider.min_value = 0.0
+		mu_range_slider.max_value = 0.05
+		mu_range_slider.step = 0.0005
 
 func _apply_stress_ranges() -> void:
 	## "Stress" profile: wider ranges for extreme / debugging.
@@ -901,6 +928,33 @@ func _apply_stress_ranges() -> void:
 		field_kernel_width_slider.min_value = 0.1
 		field_kernel_width_slider.max_value = 80.0
 		field_kernel_width_slider.step = 1.0
+	
+	# Particle Lenia parameters (advanced)
+	if particle_kernel_radius_slider:
+		particle_kernel_radius_slider.min_value = 5.0
+		particle_kernel_radius_slider.max_value = 500.0
+		particle_kernel_radius_slider.step = 5.0
+	
+	if particle_kernel_width_slider:
+		particle_kernel_width_slider.min_value = 0.5
+		particle_kernel_width_slider.max_value = 100.0
+		particle_kernel_width_slider.step = 1.0
+	
+	if particle_sigma_slider:
+		particle_sigma_slider.min_value = 0.0005
+		particle_sigma_slider.max_value = 0.5
+		particle_sigma_slider.step = 0.001
+	
+	# Field → Particle coupling (advanced)
+	if mu_base_slider:
+		mu_base_slider.min_value = 0.0
+		mu_base_slider.max_value = 1.0
+		mu_base_slider.step = 0.001
+	
+	if mu_range_slider:
+		mu_range_slider.min_value = 0.0
+		mu_range_slider.max_value = 0.2
+		mu_range_slider.step = 0.001
 
 # Helper to find node with property
 func _find_node_with_property(node: Node, property: String) -> Node:

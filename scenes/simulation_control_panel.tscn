@@ -239,7 +239,7 @@ layout_mode = 2
 
 [node name="GradientStrengthLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
 layout_mode = 2
-text = "gradient:"
+text = "Particle Lenia Strength:"
 
 [node name="GradientStrengthSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/GradientStrengthContainer"]
 layout_mode = 2
@@ -257,7 +257,7 @@ layout_mode = 2
 
 [node name="RepulsionStrengthLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
 layout_mode = 2
-text = "repulsion:"
+text = "Repulsion (Stabilizer):"
 
 [node name="RepulsionStrengthSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/RepulsionStrengthContainer"]
 layout_mode = 2
@@ -311,7 +311,7 @@ layout_mode = 2
 
 [node name="DepositAmountLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
 layout_mode = 2
-text = "deposit amt:"
+text = "Particle → Field Deposit:"
 
 [node name="DepositAmountSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositAmountContainer"]
 layout_mode = 2
@@ -329,7 +329,7 @@ layout_mode = 2
 
 [node name="DepositRadiusLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
 layout_mode = 2
-text = "deposit r:"
+text = "Deposit Spread:"
 
 [node name="DepositRadiusSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/ParticleContainer/ParticleBasic/DepositRadiusContainer"]
 layout_mode = 2
@@ -443,5 +443,41 @@ max_value = 0.2
 step = 0.001
 
 [node name="ParticleSigmaValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/ParticleSigmaContainer"]
+layout_mode = 2
+text = "0.000"
+
+[node name="MuBaseContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
+layout_mode = 2
+
+[node name="MuBaseLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuBaseContainer"]
+layout_mode = 2
+text = "Base Mu:"
+
+[node name="MuBaseSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuBaseContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 1.0
+step = 0.001
+
+[node name="MuBaseValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuBaseContainer"]
+layout_mode = 2
+text = "0.000"
+
+[node name="MuRangeContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced"]
+layout_mode = 2
+
+[node name="MuRangeLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuRangeContainer"]
+layout_mode = 2
+text = "Field → Particle Influence:"
+
+[node name="MuRangeSlider" type="HSlider" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuRangeContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 0.1
+step = 0.001
+
+[node name="MuRangeValue" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer/ParticleAdvanced/MuRangeContainer"]
 layout_mode = 2
 text = "0.000"
