@@ -3,16 +3,48 @@ extends Control
 
 ## Runtime control panel for tweaking simulation parameters live
 
-## Authoritative wiring: exported references if set, otherwise groups.
-## Groups expected to be unique: "environment_field", "particle_system".
-@export var environment_field: EnvironmentField = null
-@export var particle_system: Node = null  # ParticleSystemGPU
+## Wiring contract:
+## - Prefer exported NodePaths (layout-stable, explicit).
+## - Fall back to groups ONLY if the NodePath is unset OR resolves to null.
+## - Groups must be unique in runnable scenes: exactly one "environment_field" and one "particle_system".
+##
+## UI → behavior mapping (authoritative):
+## - ModeSelector → `ParticleSystemGPU.simulation_mode` → gates evolve/compute/deposit/update_display.
+## - ParticleCountSpin → `ParticleSystemGPU.particle_count` → realloc particle buffers.
+## - ShowFieldButton → `EnvironmentField.show_field` → toggles `FieldSprite.visible`.
+## - FieldMuSlider → `EnvironmentField.field_mu` → affects `field_evolution.glsl` + `field_to_texture.glsl` colormap.
+## - FieldSigmaSlider → `EnvironmentField.field_sigma` → affects `field_evolution.glsl`.
+## - FieldDtSlider → `EnvironmentField.field_dt` → affects field evolution time step.
+## - FieldDecaySlider → `EnvironmentField.field_decay` → used in `deposit_particles_gpu()` uniforms.
+## - FieldBaselineSlider → `EnvironmentField.field_baseline` → used in `deposit_particles_gpu()` uniforms.
+## - FieldKernelRadiusSlider → `EnvironmentField.field_kernel_radius` → affects `field_evolution.glsl`.
+## - FieldKernelWidthSlider → `EnvironmentField.field_kernel_width` → affects `field_evolution.glsl`.
+## - GradientStrengthSlider → `ParticleSystemGPU.gradient_strength` → uploaded to `particle_compute.glsl`.
+## - RepulsionStrengthSlider → `ParticleSystemGPU.repulsion_strength` → uploaded to `particle_compute.glsl`.
+## - TimeScaleSlider → `ParticleSystemGPU.time_scale` → uploaded to `particle_compute.glsl` and CPU integration.
+## - MinDistSlider → `ParticleSystemGPU.min_dist` → uploaded to `particle_compute.glsl` and CPU wrap.
+## - DepositAmountSlider → `EnvironmentField.deposit_amount` → used in `deposit_particles_gpu()` uniforms.
+## - DepositRadiusSlider → `EnvironmentField.deposit_radius` → used in `deposit_particles_gpu()` uniforms.
+## - ParticleKernelRadiusSlider → `ParticleSystemGPU.particle_kernel_radius` → uploaded to `particle_compute.glsl`.
+## - ParticleKernelWidthSlider → `ParticleSystemGPU.particle_kernel_width` → uploaded to `particle_compute.glsl`.
+## - ParticleSigmaSlider → `ParticleSystemGPU.particle_sigma` → uploaded to `particle_compute.glsl`.
+@export var environment_field_path: NodePath
+@export var particle_system_path: NodePath
+
+var environment_field: EnvironmentField = null
+var particle_system: Node = null  # ParticleSystemGPU
+
+enum RangeProfile {
+	TUNING,
+	STRESS
+}
 
 # UI References (null-safe lookups)
 var panel: Panel = null
 var wiring_status: Label = null
 var collapse_button: Button = null
 var body_scroll: ScrollContainer = null
+var range_profile_selector: OptionButton = null
 var mode_selector: OptionButton = null
 var particle_count_spin: SpinBox = null
 var show_field_button: CheckButton = null
@@ -85,6 +117,7 @@ func _resolve_ui_nodes() -> void:
 	wiring_status = get_node_or_null("Panel/MainVBox/HeaderRow/WiringStatus")
 	collapse_button = get_node_or_null("Panel/MainVBox/HeaderRow/CollapseButton")
 	body_scroll = get_node_or_null("Panel/MainVBox/BodyScroll")
+	range_profile_selector = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/RangeProfileContainer/RangeProfileSelector")
 	mode_selector = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/ModeContainer/ModeSelector")
 	particle_count_spin = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/ParticleCountContainer/ParticleCountSpin")
 	show_field_button = get_node_or_null("Panel/MainVBox/BodyScroll/BodyVBox/TogglesRow/ShowFieldButton")
@@ -162,16 +195,37 @@ func _safe_set_visible(node: CanvasItem, should_show: bool) -> void:
 		node.visible = should_show
 
 func _resolve_targets() -> void:
-	# Exported references are authoritative if present.
-	# Fall back to groups only when exports are unset.
+	environment_field = null
+	particle_system = null
+
+	# 1) Explicit NodePath wiring (preferred)
+	if environment_field_path != NodePath():
+		var n = get_node_or_null(environment_field_path)
+		if n is EnvironmentField:
+			environment_field = n
+	if particle_system_path != NodePath():
+		var p = get_node_or_null(particle_system_path)
+		if p != null and "simulation_mode" in p:
+			particle_system = p
+
+	# 2) Fallback wiring via unique groups (only if missing/unresolved)
 	if environment_field == null:
-		var gf = get_tree().get_first_node_in_group("environment_field")
-		if gf is EnvironmentField:
-			environment_field = gf
+		var env_nodes := get_tree().get_nodes_in_group("environment_field")
+		if env_nodes.size() != 1:
+			push_error("Expected exactly 1 node in group 'environment_field', found %d" % env_nodes.size())
+		else:
+			var gf = env_nodes[0]
+			if gf is EnvironmentField:
+				environment_field = gf
+
 	if particle_system == null:
-		var gp = get_tree().get_first_node_in_group("particle_system")
-		if gp != null and "simulation_mode" in gp:
-			particle_system = gp
+		var ps_nodes := get_tree().get_nodes_in_group("particle_system")
+		if ps_nodes.size() != 1:
+			push_error("Expected exactly 1 node in group 'particle_system', found %d" % ps_nodes.size())
+		else:
+			var gp = ps_nodes[0]
+			if gp != null and "simulation_mode" in gp:
+				particle_system = gp
 
 func _setup_ui() -> void:
 	# Ensure body is visible by default (not collapsed)
@@ -194,6 +248,17 @@ func _setup_ui() -> void:
 	if show_advanced != null:
 		if not show_advanced.toggled.is_connected(_on_show_advanced_toggled):
 			show_advanced.toggled.connect(_on_show_advanced_toggled)
+
+	# Range profile selector: configure once
+	if range_profile_selector != null:
+		range_profile_selector.clear()
+		range_profile_selector.add_item("Tuning")   # 0
+		range_profile_selector.add_item("Stress")   # 1
+		range_profile_selector.select(RangeProfile.TUNING)
+		if not range_profile_selector.item_selected.is_connected(_on_range_profile_selected):
+			range_profile_selector.item_selected.connect(_on_range_profile_selected)
+		# Apply initial profile
+		_apply_range_profile(RangeProfile.TUNING)
 
 	# Mode selector: configure once
 	if mode_selector != null:
@@ -338,7 +403,8 @@ func _on_collapse_pressed() -> void:
 func _on_particle_count_value_changed(value: float) -> void:
 	if particle_system == null:
 		return
-	_pending_particle_count = int(value)
+	# Safety: must be >= 1 to avoid 0-workgroup dispatch
+	_pending_particle_count = max(1, int(value))
 	_particle_count_timer.start()
 
 func _apply_pending_particle_count() -> void:
@@ -570,8 +636,9 @@ func _on_deposit_amount_changed(value: float):
 
 func _on_deposit_radius_changed(value: float):
 	if environment_field:
-		environment_field.deposit_radius = value
-		_update_deposit_radius_label(value)
+		# Safety: must be > 0 if CPU fallback deposit is used; GPU path tolerates 0 but produces no deposit
+		environment_field.deposit_radius = max(0.0001, value)
+		_update_deposit_radius_label(environment_field.deposit_radius)
 
 func _on_particle_kernel_radius_changed(value: float):
 	if particle_system and "particle_kernel_radius" in particle_system:
@@ -652,6 +719,161 @@ func _update_particle_kernel_width_label(value: float):
 func _update_particle_sigma_label(value: float):
 	if particle_sigma_label != null:
 		particle_sigma_label.text = "%.3f" % value
+
+func _on_range_profile_selected(index: int) -> void:
+	_apply_range_profile(index)
+
+func _apply_range_profile(profile: int) -> void:
+	## Apply range preset (Tuning or Stress) to all sliders/spinboxes at runtime.
+	match profile:
+		RangeProfile.TUNING:
+			_apply_tuning_ranges()
+		RangeProfile.STRESS:
+			_apply_stress_ranges()
+
+func _apply_tuning_ranges() -> void:
+	## "Tuning" profile: tighter ranges for normal exploration.
+	if particle_count_spin:
+		particle_count_spin.min_value = 64
+		particle_count_spin.max_value = 4096
+		particle_count_spin.step = 1
+	
+	if gradient_strength_slider:
+		gradient_strength_slider.min_value = 0.0
+		gradient_strength_slider.max_value = 2000.0
+		gradient_strength_slider.step = 5.0
+	
+	if repulsion_strength_slider:
+		repulsion_strength_slider.min_value = 0.0
+		repulsion_strength_slider.max_value = 2000.0
+		repulsion_strength_slider.step = 5.0
+	
+	if min_dist_slider:
+		min_dist_slider.min_value = 0.0
+		min_dist_slider.max_value = 150.0
+		min_dist_slider.step = 0.5
+	
+	if time_scale_slider:
+		time_scale_slider.min_value = 0.0
+		time_scale_slider.max_value = 5.0
+		time_scale_slider.step = 0.01
+	
+	if deposit_amount_slider:
+		deposit_amount_slider.min_value = 0.0
+		deposit_amount_slider.max_value = 0.02
+		deposit_amount_slider.step = 0.00001
+	
+	if deposit_radius_slider:
+		deposit_radius_slider.min_value = 0.5
+		deposit_radius_slider.max_value = 80.0
+		deposit_radius_slider.step = 0.5
+	
+	if field_decay_slider:
+		field_decay_slider.min_value = 0.0
+		field_decay_slider.max_value = 0.05
+		field_decay_slider.step = 0.0001
+	
+	if field_baseline_slider:
+		field_baseline_slider.min_value = 0.0
+		field_baseline_slider.max_value = 1.0
+		field_baseline_slider.step = 0.001
+	
+	if field_mu_slider:
+		field_mu_slider.min_value = 0.0
+		field_mu_slider.max_value = 1.0
+		field_mu_slider.step = 0.001
+	
+	if field_sigma_slider:
+		field_sigma_slider.min_value = 0.002
+		field_sigma_slider.max_value = 0.15
+		field_sigma_slider.step = 0.001
+	
+	if field_dt_slider:
+		field_dt_slider.min_value = 0.0
+		field_dt_slider.max_value = 0.03
+		field_dt_slider.step = 0.0005
+	
+	if field_kernel_radius_slider:
+		field_kernel_radius_slider.min_value = 1.0
+		field_kernel_radius_slider.max_value = 80.0
+		field_kernel_radius_slider.step = 0.5
+	
+	if field_kernel_width_slider:
+		field_kernel_width_slider.min_value = 0.5
+		field_kernel_width_slider.max_value = 30.0
+		field_kernel_width_slider.step = 0.5
+
+func _apply_stress_ranges() -> void:
+	## "Stress" profile: wider ranges for extreme / debugging.
+	if particle_count_spin:
+		particle_count_spin.min_value = 1
+		particle_count_spin.max_value = 20000
+		particle_count_spin.step = 1
+	
+	if gradient_strength_slider:
+		gradient_strength_slider.min_value = 0.0
+		gradient_strength_slider.max_value = 20000.0
+		gradient_strength_slider.step = 50.0
+	
+	if repulsion_strength_slider:
+		repulsion_strength_slider.min_value = 0.0
+		repulsion_strength_slider.max_value = 20000.0
+		repulsion_strength_slider.step = 50.0
+	
+	if min_dist_slider:
+		min_dist_slider.min_value = 0.0
+		min_dist_slider.max_value = 500.0
+		min_dist_slider.step = 1.0
+	
+	if time_scale_slider:
+		time_scale_slider.min_value = 0.0
+		time_scale_slider.max_value = 5.0
+		time_scale_slider.step = 0.01
+	
+	if deposit_amount_slider:
+		deposit_amount_slider.min_value = 0.0
+		deposit_amount_slider.max_value = 0.2
+		deposit_amount_slider.step = 0.0001
+	
+	if deposit_radius_slider:
+		deposit_radius_slider.min_value = 0.0
+		deposit_radius_slider.max_value = 200.0
+		deposit_radius_slider.step = 1.0
+	
+	if field_decay_slider:
+		field_decay_slider.min_value = 0.0
+		field_decay_slider.max_value = 0.5
+		field_decay_slider.step = 0.001
+	
+	if field_baseline_slider:
+		field_baseline_slider.min_value = -0.5
+		field_baseline_slider.max_value = 1.5
+		field_baseline_slider.step = 0.001
+	
+	if field_mu_slider:
+		field_mu_slider.min_value = 0.0
+		field_mu_slider.max_value = 1.0
+		field_mu_slider.step = 0.001
+	
+	if field_sigma_slider:
+		field_sigma_slider.min_value = 0.001
+		field_sigma_slider.max_value = 0.5
+		field_sigma_slider.step = 0.001
+	
+	if field_dt_slider:
+		field_dt_slider.min_value = 0.0
+		field_dt_slider.max_value = 0.1
+		field_dt_slider.step = 0.001
+	
+	if field_kernel_radius_slider:
+		field_kernel_radius_slider.min_value = 1.0
+		field_kernel_radius_slider.max_value = 200.0
+		field_kernel_radius_slider.step = 1.0
+	
+	if field_kernel_width_slider:
+		field_kernel_width_slider.min_value = 0.1
+		field_kernel_width_slider.max_value = 80.0
+		field_kernel_width_slider.step = 1.0
 
 # Helper to find node with property
 func _find_node_with_property(node: Node, property: String) -> Node:

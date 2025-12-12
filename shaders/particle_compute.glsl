@@ -10,8 +10,10 @@ layout(set = 0, binding = 0) readonly buffer Positions {
 	vec2 positions[];
 };
 
-// Output: particle velocities
-layout(set = 0, binding = 1) writeonly buffer Velocities {
+// Particle velocities (persist across frames).
+// Convention: shader writes velocity in world units / second (NOT pre-multiplied by dt).
+// CPU integrates: position += velocity * delta * time_scale (delta applied exactly once on CPU).
+layout(set = 0, binding = 1, std430) buffer Velocities {
 	vec2 velocities[];
 };
 
@@ -34,12 +36,25 @@ layout(set = 0, binding = 3, std140) uniform ParamsBlock {
 	float gradient_strength;
 	float repulsion_strength;
 	float min_dist;
-	float delta_time;
+	float velocity_smoothing;           // 0 = snap to target velocity (no smoothing); >0 blends previous->target
 	float field_grid_size;
 	float viewport_width;
 	float viewport_height;
 	float _padding;  // std140 alignment
 };
+
+int wrap_index(int v, int size) {
+	// Wrap index into [0, size). Use this instead of clamping for toroidal topology.
+	// (We keep explicit wrapping even though particle positions are wrapped on CPU, because
+	// central-difference sampling can probe outside the viewport.)
+	return ((v % size) + size) % size;
+}
+
+vec2 wrap_world_pos(vec2 p) {
+	// Wrap into [0, viewport) to match CPU toroidal world.
+	// NOTE: viewport_width/height are expected > 0 for a valid simulation.
+	return vec2(mod(p.x, viewport_width), mod(p.y, viewport_height));
+}
 
 // Ring kernel: exp(-(r - r0)^2 / (2 * s^2))
 float ring_kernel(float r) {
@@ -66,32 +81,42 @@ float sample_field(vec2 world_pos) {
 	
 	// Compute field buffer size explicitly from grid_size^2.
 	// We avoid buffer `.length()` bounds checks because Metal can report 0 for SSBO length;
-	// keep this identifier consistent or the shader will fail if a renamed symbol is referenced out of scope.
+	// keep this identifier in the same scope as the bounds checks (some drivers are picky about scope/SSA).
 	int field_buffer_size = int(field_grid_size * field_grid_size);
+	int size = int(field_grid_size);
 	
-	// Convert world position to UV coordinates [0, 1]
-	vec2 uv = world_pos / vec2(viewport_width, viewport_height);
-	uv = clamp(uv, 0.0, 1.0);
+	// Toroidal topology: wrap world coordinates instead of clamping UVs.
+	// This keeps central differences symmetric near viewport edges.
+	vec2 p = wrap_world_pos(world_pos);
+	
+	// Convert wrapped world position to UV in [0,1)
+	vec2 uv = p / vec2(viewport_width, viewport_height);
 	
 	// Convert UV to grid coordinates
-	float grid_x = uv.x * (field_grid_size - 1.0);
-	float grid_y = uv.y * (field_grid_size - 1.0);
+	float grid_x = uv.x * field_grid_size;
+	float grid_y = uv.y * field_grid_size;
 	
 	// Get integer grid coordinates
 	int x0 = int(floor(grid_x));
 	int y0 = int(floor(grid_y));
-	int x1 = min(x0 + 1, int(field_grid_size) - 1);
-	int y1 = min(y0 + 1, int(field_grid_size) - 1);
+	int x1 = x0 + 1;
+	int y1 = y0 + 1;
+	
+	// Wrap indices (toroidal)
+	int wx0 = wrap_index(x0, size);
+	int wy0 = wrap_index(y0, size);
+	int wx1 = wrap_index(x1, size);
+	int wy1 = wrap_index(y1, size);
 	
 	// Interpolation factors
 	float tx = grid_x - float(x0);
 	float ty = grid_y - float(y0);
 	
 	// Get field values at corners
-	int idx00 = y0 * int(field_grid_size) + x0;
-	int idx10 = y0 * int(field_grid_size) + x1;
-	int idx01 = y1 * int(field_grid_size) + x0;
-	int idx11 = y1 * int(field_grid_size) + x1;
+	int idx00 = wy0 * size + wx0;
+	int idx10 = wy0 * size + wx1;
+	int idx01 = wy1 * size + wx0;
+	int idx11 = wy1 * size + wx1;
 	
 	// Bounds check using calculated buffer size instead of .length()
 	float v00 = (idx00 >= 0 && idx00 < field_buffer_size) ? field_data[idx00] : 0.0;
@@ -183,6 +208,19 @@ vec2 calculate_repulsion(int i) {
 		}
 		
 		vec2 diff = pos_i - positions[j];
+		
+		// Minimum-image convention for toroidal world: remap diff into [-W/2, W/2] and [-H/2, H/2].
+		// This makes neighbor interactions consistent with CPU wrap-around.
+		if (viewport_width > 0.0) {
+			float half_w = 0.5 * viewport_width;
+			if (diff.x > half_w) diff.x -= viewport_width;
+			else if (diff.x < -half_w) diff.x += viewport_width;
+		}
+		if (viewport_height > 0.0) {
+			float half_h = 0.5 * viewport_height;
+			if (diff.y > half_h) diff.y -= viewport_height;
+			else if (diff.y < -half_h) diff.y += viewport_height;
+		}
 		float dist = length(diff);
 		
 		if (dist < min_dist && dist > 0.0) {
@@ -206,27 +244,40 @@ void main() {
 	// Calculate repulsion
 	vec2 repulsion = calculate_repulsion(int(i));
 	
-	// Compute field gradient via central differences
-	// Epsilon scales with viewport/grid ratio to span multiple grid cells
-	float epsilon = max(viewport_width, viewport_height) / field_grid_size * 2.0;
-	
-	// Sample field using the fixed sample_field function
-	float field_right = sample_field(pos + vec2(epsilon, 0.0));
-	float field_left = sample_field(pos - vec2(epsilon, 0.0));
-	float field_up = sample_field(pos + vec2(0.0, epsilon));
-	float field_down = sample_field(pos - vec2(0.0, epsilon));
-	
-	vec2 field_gradient = vec2(
-		(field_right - field_left) / (2.0 * epsilon),
-		(field_up - field_down) / (2.0 * epsilon)
-	);
-	
-	// Apply gradient and repulsion
-	vec2 v = field_gradient * gradient_strength;
-	
-	if (repulsion_strength > 0.0) {
-		v += repulsion * repulsion_strength;
+	// Compute field gradient via central differences (toroidal sample_field wraps at boundaries).
+	vec2 field_gradient = vec2(0.0);
+	if (field_grid_size > 0.0) {
+		// Epsilon scales with viewport/grid ratio to span multiple grid cells
+		float epsilon = max(viewport_width, viewport_height) / field_grid_size * 2.0;
+		epsilon = max(epsilon, 0.0001);
+		
+		float field_right = sample_field(pos + vec2(epsilon, 0.0));
+		float field_left = sample_field(pos - vec2(epsilon, 0.0));
+		float field_up = sample_field(pos + vec2(0.0, epsilon));
+		float field_down = sample_field(pos - vec2(0.0, epsilon));
+		
+		field_gradient = vec2(
+			(field_right - field_left) / (2.0 * epsilon),
+			(field_up - field_down) / (2.0 * epsilon)
+		);
 	}
 	
-	velocities[i] = v;
+	// Apply gradient and repulsion
+	vec2 v_target = field_gradient * gradient_strength;
+	
+	if (repulsion_strength > 0.0) {
+		v_target += repulsion * repulsion_strength;
+	}
+	
+	// Optional inertia/damping: blend previous velocity toward the target velocity.
+	// Matches the previous CPU-side smoothing behavior:
+	// - velocity_smoothing <= 0: snap to target (no smoothing)
+	// - 0 < velocity_smoothing <= 1: velocities = lerp(prev, target, velocity_smoothing)
+	if (velocity_smoothing <= 0.0) {
+		velocities[i] = v_target;
+	} else {
+		float s = clamp(velocity_smoothing, 0.0, 1.0);
+		vec2 v_prev = velocities[i];
+		velocities[i] = mix(v_prev, v_target, s);
+	}
 }

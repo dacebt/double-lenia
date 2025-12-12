@@ -82,6 +82,17 @@ text = "mode:"
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="RangeProfileContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
+layout_mode = 2
+
+[node name="RangeProfileLabel" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/RangeProfileContainer"]
+layout_mode = 2
+text = "range profile:"
+
+[node name="RangeProfileSelector" type="OptionButton" parent="Panel/MainVBox/BodyScroll/BodyVBox/RangeProfileContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="ParticleCountContainer" type="HBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
 
@@ -333,6 +344,11 @@ text = "0.0"
 
 [node name="AdvancedContainer" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox"]
 layout_mode = 2
+
+[node name="InactiveParamsNote" type="Label" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer"]
+layout_mode = 2
+text = "Note: Particle ring-kernel params (part kernel r/w, part σ) are not used by the current velocity shader path (field-gradient mode). Kept for analytic particle-interaction path."
+autowrap_mode = 3
 
 [node name="FieldAdvanced" type="VBoxContainer" parent="Panel/MainVBox/BodyScroll/BodyVBox/AdvancedContainer"]
 layout_mode = 2

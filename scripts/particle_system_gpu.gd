@@ -74,13 +74,18 @@ var positions_data: PackedFloat32Array
 var velocities_data: PackedFloat32Array
 var mu_data: PackedFloat32Array
 var uniform_bytes_buffer: PackedByteArray  # Pre-allocated buffer for uniform uploads
+var _did_init_env_gpu: bool = false
 
 func _ready() -> void:
 	# If the exported reference wasn't set in the scene, fall back to groups.
 	if environment_field == null:
-		var gf = get_tree().get_first_node_in_group("environment_field")
-		if gf is EnvironmentField:
-			environment_field = gf
+		var env_nodes := get_tree().get_nodes_in_group("environment_field")
+		if env_nodes.size() != 1:
+			push_error("Expected exactly 1 node in group 'environment_field', found %d. Field coupling disabled." % env_nodes.size())
+		else:
+			var gf = env_nodes[0]
+			if gf is EnvironmentField:
+				environment_field = gf
 
 	rd = RenderingServer.create_local_rendering_device()
 	if rd == null:
@@ -88,8 +93,9 @@ func _ready() -> void:
 		return
 	
 	# Initialize environment field with our RenderingDevice
-	if environment_field:
+	if environment_field and not _did_init_env_gpu:
 		environment_field.initialize_gpu(rd)
+		_did_init_env_gpu = true
 	
 	_setup_compute_shader()
 	spawn_particles()
@@ -356,7 +362,7 @@ func _upload_mu_locals() -> void:
 	var mu_bytes: PackedByteArray = mu_data.to_byte_array()
 	rd.buffer_update(mu_buffer, 0, mu_bytes.size(), mu_bytes)
 
-func _upload_uniforms(delta: float) -> void:
+func _upload_uniforms(_delta: float) -> void:
 	# Pack uniforms into pre-allocated byte array (48 bytes = 12 floats for std140 alignment)
 	var uniform_bytes = uniform_bytes_buffer
 	
@@ -380,7 +386,10 @@ func _upload_uniforms(delta: float) -> void:
 	offset += 4
 	uniform_bytes.encode_float(offset, min_dist)
 	offset += 4
-	uniform_bytes.encode_float(offset, delta * time_scale)
+	# IMPORTANT: particle shader outputs velocity in world units / second (not pre-multiplied by dt).
+	# Time integration is applied exactly once on CPU: position += velocity * delta * time_scale.
+	# We repurpose this slot (previously delta_time) for GPU-side velocity smoothing (inertia).
+	uniform_bytes.encode_float(offset, clamp(velocity_smoothing, 0.0, 1.0))
 	offset += 4
 	uniform_bytes.encode_float(offset, field_grid_size)
 	offset += 4
@@ -415,19 +424,14 @@ func _read_velocities() -> void:
 	var output_bytes = rd.buffer_get_data(velocity_buffer)
 	var output_floats = output_bytes.to_float32_array()
 	
-	# Unpack velocities and apply smoothing if enabled
+	# Unpack velocities (GPU shader already applies optional smoothing/inertia)
 	for i in range(particles.size()):
 		if i * 2 + 1 < output_floats.size():
 			var new_velocity = Vector2(
 				output_floats[i * 2],
 				output_floats[i * 2 + 1]
 			)
-			
-			if velocity_smoothing <= 0.0:
-				particles[i].velocity = new_velocity
-			else:
-				var s = clamp(velocity_smoothing, 0.0, 1.0)
-				particles[i].velocity = particles[i].velocity.lerp(new_velocity, s)
+			particles[i].velocity = new_velocity
 
 func _update_particles(delta: float) -> void:
 	# Update positions based on velocities

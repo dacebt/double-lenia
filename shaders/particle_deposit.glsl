@@ -53,6 +53,19 @@ void main() {
 	for (int i = 0; i < int(particle_count); i++) {
 		vec2 particle_pos = positions[i];
 		vec2 diff = world_pos - particle_pos;
+		
+		// Minimum-image convention for toroidal world: remap diff into [-W/2, W/2] and [-H/2, H/2].
+		// This keeps deposit topology consistent with CPU particle wrapping and particle shader sampling.
+		if (viewport_width > 0.0) {
+			float half_w = 0.5 * viewport_width;
+			if (diff.x > half_w) diff.x -= viewport_width;
+			else if (diff.x < -half_w) diff.x += viewport_width;
+		}
+		if (viewport_height > 0.0) {
+			float half_h = 0.5 * viewport_height;
+			if (diff.y > half_h) diff.y -= viewport_height;
+			else if (diff.y < -half_h) diff.y += viewport_height;
+		}
 		float dist_sq = dot(diff, diff);
 		
 		// Only process particles within search radius

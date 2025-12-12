@@ -67,6 +67,7 @@ var uniform_buffer: RID
 var uniform_sets: Array[RID] = [RID(), RID()]  # one for each ping-pong direction
 var current_buffer: int = 0  # which buffer to read from
 var use_gpu: bool = false  # whether GPU is available
+var gpu_initialized: bool = false  # Guard against double-init
 
 # GPU visualization resources
 var texture_shader: RID
@@ -95,6 +96,8 @@ func _ready() -> void:
 
 func initialize_gpu(rendering_device: RenderingDevice) -> void:
 	## Initialize GPU compute with a shared RenderingDevice from particle system.
+	if gpu_initialized:
+		return
 	rd = rendering_device
 	if rd != null:
 		_setup_compute_shader()
@@ -102,6 +105,7 @@ func initialize_gpu(rendering_device: RenderingDevice) -> void:
 		_initialize_field_from_noise()
 		_setup_deposit_shader()
 		use_gpu = true
+		gpu_initialized = true
 		
 		# Pre-allocate uniform buffers
 		uniform_bytes_buffer.resize(32)  # Field evolution uniforms
@@ -911,7 +915,6 @@ func _sync_texture_to_display() -> void:
 		vis_texture.update(image)
 		if field_sprite != null:
 			field_sprite.texture = vis_texture
-			_update_field_sprite_scale()
 
 func _exit_tree():
 	# Cleanup GPU resources

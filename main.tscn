@@ -32,12 +32,6 @@ render_target_update_mode = 4
 
 [node name="SimulationRoot" type="Node2D" parent="HSplitContainer/SubViewportContainer/SubViewport" groups=["particle_system"]]
 script = ExtResource("1_0")
-particle_count = 166
-min_dist = 30.0
-particle_kernel_width = 50.0
-gradient_strength = 300.0
-repulsion_strength = 10.0
-time_scale = 200.0
 
 [node name="EnvironmentField" parent="HSplitContainer/SubViewportContainer/SubViewport/SimulationRoot" instance=ExtResource("2_0")]
 
