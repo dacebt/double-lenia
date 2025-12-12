@@ -20,7 +20,7 @@ That turned into a particle variant (continuous space, discrete agents), and eve
   - **Particles → Field (dominant):** particles **deposit** into the field (Gaussian splats).
   - **Field → Particles (weak):** field samples **modulate particle μ locally** (`mu_locals`) by a small amount. With `mu_range = 0`, the field does not influence particles.
 
-[Patterns / parameter sets](./patterns/README.md)
+![Preview](./preview.gif)
 
 ## What emerges
 
